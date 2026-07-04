@@ -29,7 +29,7 @@ MAX_BATCH_SIZE: int = 16
 VIDEO_FRAMES_PER_SAMPLE: int = 8
 
 
-class _VideoFileDataset(Dataset[torch.Tensor]):
+class _VideoFileDataset(Dataset[torch.Tensor]):  # type: ignore[misc]
     """Dataset wrapping video file paths and a preprocess function.
 
     Used for efficient batched video loading and preprocessing

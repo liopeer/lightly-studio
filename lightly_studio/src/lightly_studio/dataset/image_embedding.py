@@ -39,7 +39,7 @@ class EmbeddingContext:
     encode_batch: Callable[[torch.Tensor], NDArray[np.float32]]
 
 
-class _ImageFileDataset(Dataset[torch.Tensor]):
+class _ImageFileDataset(Dataset[torch.Tensor]):  # type: ignore[misc]
     """Dataset wrapping image file paths and a preprocess function.
 
     Used for efficient batched image loading and preprocessing.

@@ -7,7 +7,7 @@ from typing import Any
 import boto3
 import fsspec
 import pytest
-import s3fs  # type: ignore[import-untyped]
+import s3fs
 from moto.server import ThreadedMotoServer
 from pytest_mock import MockerFixture
 

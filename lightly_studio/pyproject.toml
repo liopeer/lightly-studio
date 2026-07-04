@@ -42,9 +42,6 @@ dependencies = [
     "scikit-learn==1.7.2; python_version >= '3.10'",
     "python-multipart>=0.0.20",
     "environs<12.0.0",
-    "open-clip-torch>=2.20.0",
-    "torch>=2.6.0",
-    "torchvision>=0.20.0",
     # Public Mundig versions are found at https://pypi.org/project/lightly-mundig/
     # Internal Mundig versions are found at
     # https://console.cloud.google.com/artifacts/python/boris-250909/europe-west3/lightly-pypi/lightly-mundig
@@ -65,6 +62,7 @@ dependencies = [
     "brotli-asgi>=1.4.0",
     "jinja2>=3.1.0",
     "alembic-postgresql-enum>=1.10.0",
+    "tritonclient[grpc]>=2.41.1",
 ]
 
 [project.scripts]
@@ -133,6 +131,18 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "sqlalchemy_utils.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["s3fs", "s3fs.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tritonclient.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*", "torchvision.*"]
 ignore_missing_imports = true
 
 

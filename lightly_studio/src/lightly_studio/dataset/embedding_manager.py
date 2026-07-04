@@ -460,7 +460,18 @@ def _load_embedding_generator_from_env(sample_type: SampleType) -> EmbeddingGene
 
 # TODO(Michal, 09/2025): Write tests for this function.
 def _load_image_embedding_generator_from_env() -> ImageEmbeddingGenerator | None:
-    if env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_TYPE == "MOBILE_CLIP":
+    if env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_TYPE == "TRITON_MOBILE_CLIP":
+        try:
+            # Keep this import local because this backend is only needed when selected.
+            from lightly_studio.dataset.triton_mobileclip_embedding_generator import (  # noqa: PLC0415
+                TritonMobileCLIPEmbeddingGenerator,
+            )
+
+            logger.info("Using Triton MobileCLIP embedding generator for images.")
+            return TritonMobileCLIPEmbeddingGenerator()
+        except ImportError:
+            logger.warning("Embedding functionality is disabled.")
+    elif env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_TYPE == "MOBILE_CLIP":
         try:
             # Keep this import local because this backend is only needed when selected.
             from lightly_studio.dataset.mobileclip_embedding_generator import (  # noqa: PLC0415

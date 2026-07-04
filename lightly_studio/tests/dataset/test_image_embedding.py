@@ -1,11 +1,13 @@
 from pathlib import Path
 
 import numpy as np
-import torch
+import pytest
 from PIL import Image
 
-from lightly_studio.dataset import image_embedding
-from lightly_studio.dataset.image_embedding import EmbeddingContext
+torch = pytest.importorskip("torch")
+
+from lightly_studio.dataset import image_embedding  # noqa: E402
+from lightly_studio.dataset.image_embedding import EmbeddingContext  # noqa: E402
 
 
 def test_embed_image_files_batched__empty_input_returns_empty_array() -> None:
