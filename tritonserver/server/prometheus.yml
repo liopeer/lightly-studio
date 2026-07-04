@@ -1,0 +1,12 @@
+##
+## SPDX-License-Identifier: MIT
+## Copyright (c) 2025–2026 Lionel Peer
+##
+global:
+  scrape_interval: 5s  # Changed from 15s - scrape every 5 seconds
+  evaluation_interval: 5s  # How often to evaluate rules
+
+scrape_configs:
+  - job_name: 'triton'
+    static_configs:
+      - targets: ['triton-server:8002']

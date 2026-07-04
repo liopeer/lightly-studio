@@ -1,0 +1,17 @@
+name: "mobileclip_s0_image_preprocessing"
+backend: "python"
+max_batch_size: 0
+input [
+  {
+    name: "image_bytes"
+    data_type: TYPE_UINT8
+    dims: [ -1 ]
+  }
+]
+output [
+  {
+    name: "images"
+    data_type: TYPE_FP32
+    dims: [ 3, 256, 256 ]
+  }
+]

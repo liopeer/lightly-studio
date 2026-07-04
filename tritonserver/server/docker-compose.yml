@@ -1,0 +1,65 @@
+##
+## SPDX-License-Identifier: MIT
+## Copyright (c) 2025–2026 Lionel Peer
+##
+services:
+  model-downloader:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: model-downloader
+    volumes:
+      - ./checkpoints:/workspace/checkpoints
+      - ./download_models.sh:/workspace/download_models.sh
+    working_dir: /workspace
+    command: bash /workspace/download_models.sh
+
+  triton-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: triton-server
+    command: tritonserver --model-repository=/models --log-verbose=1
+    depends_on:
+      model-downloader:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"  # HTTP
+      - "8001:8001"  # gRPC
+      - "8002:8002"  # Metrics
+    volumes:
+      - ./model_repository:/models
+      - ./checkpoints:/checkpoints
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus-triton
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml # Prometheus configuration
+      - prometheus_triton_data:/prometheus # Named volume for persistent storage
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana-triton
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin # Set admin user
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Set admin password
+    volumes:
+      - grafana_triton_data:/var/lib/grafana # Named volume for persistent storage
+      - ./grafana/provisioning:/etc/grafana/provisioning # Provisioning configuration
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+
+volumes:
+  prometheus_triton_data:
+  grafana_triton_data:
