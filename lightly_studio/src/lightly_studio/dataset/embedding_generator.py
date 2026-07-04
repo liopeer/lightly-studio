@@ -15,7 +15,12 @@ from lightly_studio.models.embedding_model import EmbeddingModelCreate
 
 @dataclass(frozen=True)
 class ImageCrop:
-    """Image crop to embed."""
+    """Image crop to embed.
+
+    Coordinates are pixel coordinates in the source image's original resolution.
+    ``x`` and ``y`` define the top-left corner of the crop. ``width`` and
+    ``height`` define the crop size in pixels.
+    """
 
     filepath: str
     x: int
