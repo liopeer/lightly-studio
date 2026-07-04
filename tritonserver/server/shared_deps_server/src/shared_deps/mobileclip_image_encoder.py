@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2025–2026 Lionel Peer
 #
-import io
 from dataclasses import dataclass
 
 import numpy as np
@@ -10,6 +9,7 @@ import torch
 import torch.nn as nn
 from PIL import Image
 from torchvision.transforms import CenterCrop, Compose, InterpolationMode, Resize, ToTensor
+
 
 # All MobileCLIP variants share embed_dim=512; image_size differs only for s0.
 @dataclass(frozen=True)
@@ -28,7 +28,7 @@ MOBILECLIP_CONFIGS: dict[str, MobileCLIPVariantConfig] = {
 
 
 class MobileCLIPPreprocessor:
-    """Decodes a JPEG/PNG byte array into a preprocessed image tensor.
+    """Loads an image path into a preprocessed image tensor.
 
     Applies the same Resize + CenterCrop + ToTensor pipeline used during
     MobileCLIP training, matching mobileclip.create_model_and_transforms().
@@ -43,15 +43,24 @@ class MobileCLIPPreprocessor:
             ]
         )
 
-    def __call__(self, image_bytes: np.ndarray) -> torch.Tensor:
+    def __call__(
+        self,
+        image_path: str,
+        crop_box: tuple[int, int, int, int] | None = None,
+    ) -> torch.Tensor:
         """
         Args:
-            image_bytes: 1-D uint8 numpy array of JPEG/PNG encoded bytes.
+            image_path: Path to an image file readable by the Triton server.
+            crop_box: Optional crop box as ``(x, y, width, height)`` in source
+                image pixels.
 
         Returns:
             Float32 tensor of shape [3, image_size, image_size] in [0, 1].
         """
-        pil_image = Image.open(io.BytesIO(image_bytes.tobytes())).convert("RGB")
+        pil_image = Image.open(image_path).convert("RGB")
+        if crop_box is not None:
+            x, y, width, height = crop_box
+            pil_image = pil_image.crop((x, y, x + width, y + height))
         return self._transform(pil_image)
 
 

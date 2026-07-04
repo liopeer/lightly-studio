@@ -3,28 +3,47 @@ backend: "python"
 max_batch_size: 0
 input [
   {
-    name: "image_bytes"
-    data_type: TYPE_UINT8
+    name: "IMAGE_PATH"
+    data_type: TYPE_STRING
     dims: [ -1 ]
     optional: true
   },
   {
-    name: "text"
+    name: "TEXT"
     data_type: TYPE_STRING
-    dims: [ 1 ]
+    dims: [ -1 ]
+    optional: true
+  },
+  {
+    name: "CROP_X"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
+    optional: true
+  },
+  {
+    name: "CROP_Y"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
+    optional: true
+  },
+  {
+    name: "CROP_WIDTH"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
+    optional: true
+  },
+  {
+    name: "CROP_HEIGHT"
+    data_type: TYPE_INT64
+    dims: [ -1 ]
     optional: true
   }
 ]
 output [
   {
-    name: "image_embeddings"
+    name: "EMBEDDING"
     data_type: TYPE_FP32
-    dims: [ 512 ]
-  },
-  {
-    name: "text_embeddings"
-    data_type: TYPE_FP32
-    dims: [ 512 ]
+    dims: [ -1, 512 ]
   }
 ]
 instance_group [

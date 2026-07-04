@@ -3,9 +3,33 @@ backend: "python"
 max_batch_size: 0
 input [
   {
-    name: "image_bytes"
-    data_type: TYPE_UINT8
-    dims: [ -1 ]
+    name: "IMAGE_PATH"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "CROP_X"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "CROP_Y"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "CROP_WIDTH"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "CROP_HEIGHT"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
   }
 ]
 output [

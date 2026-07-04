@@ -22,7 +22,9 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run MobileCLIP inference on a folder of images via Triton.")
+    parser = argparse.ArgumentParser(
+        description="Run MobileCLIP inference on a folder of images via Triton."
+    )
     parser.add_argument("--folder", required=True, type=Path)
     parser.add_argument("--model", default="mobileclip_s0", choices=MODELS)
     parser.add_argument("--host", default="localhost")
@@ -46,17 +48,17 @@ def main() -> None:
     n_succeeded = 0
 
     for i, path in enumerate(images, 1):
-        data = np.frombuffer(path.read_bytes(), dtype=np.uint8)
-        img_input = grpcclient.InferInput("image_bytes", list(data.shape), "UINT8")
-        img_input.set_data_from_numpy(data)
+        path_data = np.array([str(path).encode("utf-8")], dtype=object)
+        img_input = grpcclient.InferInput("IMAGE_PATH", [1], "BYTES")
+        img_input.set_data_from_numpy(path_data)
 
         try:
             result = client.infer(
                 model_name=args.model,
                 inputs=[img_input],
-                outputs=[grpcclient.InferRequestedOutput("image_embeddings")],
+                outputs=[grpcclient.InferRequestedOutput("EMBEDDING")],
             )
-            emb = result.as_numpy("image_embeddings")
+            emb = result.as_numpy("EMBEDDING")[0]
             results[path] = emb
             n_succeeded += 1
             print(f"[{i:4d}/{len(images)}] {path.name}  img_norm={np.linalg.norm(emb):.4f}")

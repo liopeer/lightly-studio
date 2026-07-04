@@ -3,9 +3,33 @@ platform: "ensemble"
 max_batch_size: 64
 input [
   {
-    name: "image_bytes"
-    data_type: TYPE_UINT8
-    dims: [ -1 ]
+    name: "IMAGE_PATH"
+    data_type: TYPE_STRING
+    dims: [ 1 ]
+  },
+  {
+    name: "CROP_X"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "CROP_Y"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "CROP_WIDTH"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
+  },
+  {
+    name: "CROP_HEIGHT"
+    data_type: TYPE_INT64
+    dims: [ 1 ]
+    optional: true
   }
 ]
 output [
@@ -20,7 +44,11 @@ ensemble_scheduling {
     {
       model_name: "mobileclip_s0_image_preprocessing"
       model_version: -1
-      input_map { key: "image_bytes" value: "image_bytes" }
+      input_map { key: "IMAGE_PATH" value: "IMAGE_PATH" }
+      input_map { key: "CROP_X" value: "CROP_X" }
+      input_map { key: "CROP_Y" value: "CROP_Y" }
+      input_map { key: "CROP_WIDTH" value: "CROP_WIDTH" }
+      input_map { key: "CROP_HEIGHT" value: "CROP_HEIGHT" }
       output_map { key: "images" value: "preprocessed_images" }
     },
     {

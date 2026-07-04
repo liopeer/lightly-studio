@@ -15,6 +15,7 @@ from lightly_studio.models.embedding_model import EmbeddingModelCreate
 from .embedding_generator import ImageCrop, ImageEmbeddingGenerator
 
 DEFAULT_MODEL_NAME = "mobileclip_s0"
+SUPPORTED_MODEL_NAMES = {DEFAULT_MODEL_NAME}
 EMBEDDING_DIMENSION = 512
 
 _IMAGE_PATH_INPUT = "IMAGE_PATH"
@@ -46,6 +47,12 @@ class TritonMobileCLIPEmbeddingGenerator(ImageEmbeddingGenerator):
         self._model_name = env.env.str(
             "LIGHTLY_STUDIO_TRITON_MOBILECLIP_VARIANT", DEFAULT_MODEL_NAME
         )
+        if self._model_name not in SUPPORTED_MODEL_NAMES:
+            supported = ", ".join(sorted(SUPPORTED_MODEL_NAMES))
+            raise ValueError(
+                f"Unsupported Triton MobileCLIP variant '{self._model_name}'. "
+                f"Supported variants: {supported}."
+            )
         self._client = grpcclient.InferenceServerClient(url=self._url)
         self._model_hash = _get_model_hash(url=self._url, model_name=self._model_name)
 

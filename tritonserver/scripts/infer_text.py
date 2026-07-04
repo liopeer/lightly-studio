@@ -32,13 +32,17 @@ SAMPLE_TEXTS = [
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run MobileCLIP text inference via Triton.")
-    parser.add_argument("--texts", nargs="+", default=None, metavar="TEXT",
-                        help="Texts to embed. Defaults to built-in sample texts.")
+    parser.add_argument(
+        "--texts",
+        nargs="+",
+        default=None,
+        metavar="TEXT",
+        help="Texts to embed. Defaults to built-in sample texts.",
+    )
     parser.add_argument("--model", default="mobileclip_s0", choices=MODELS)
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", default=8000, type=int)
-    parser.add_argument("--output", default=None,
-                        help="Optional .npz path to save embeddings.")
+    parser.add_argument("--output", default=None, help="Optional .npz path to save embeddings.")
     args = parser.parse_args()
 
     texts = args.texts if args.texts is not None else SAMPLE_TEXTS
@@ -50,16 +54,16 @@ def main() -> None:
 
     for i, text in enumerate(texts, 1):
         text_data = np.array([text.encode()], dtype=object)
-        txt_input = httpclient.InferInput("text", [1], "BYTES")
+        txt_input = httpclient.InferInput("TEXT", [1], "BYTES")
         txt_input.set_data_from_numpy(text_data)
 
         try:
             result = client.infer(
                 model_name=args.model,
                 inputs=[txt_input],
-                outputs=[httpclient.InferRequestedOutput("text_embeddings")],
+                outputs=[httpclient.InferRequestedOutput("EMBEDDING")],
             )
-            emb = result.as_numpy("text_embeddings")
+            emb = result.as_numpy("EMBEDDING")[0]
             results[text] = emb
             n_succeeded += 1
             print(f"[{i:4d}/{len(texts)}] {text!r}  txt_norm={np.linalg.norm(emb):.4f}")
