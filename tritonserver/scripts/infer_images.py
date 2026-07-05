@@ -24,46 +24,46 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
 async def infer_image(
     client: grpcclient.InferenceServerClient,
-    sem: asyncio.Semaphore,
     model: str,
-    path: Path,
-    index: int,
-    total: int,
+    paths: list[Path],
     results: dict[Path, np.ndarray],
 ) -> bool:
-    path_data = np.array([str(path).encode("utf-8")], dtype=object)
-    img_input = grpcclient.InferInput("IMAGE_PATH", [1], "BYTES")
+    path_data = np.array([str(path).encode("utf-8") for path in paths], dtype=object)
+    img_input = grpcclient.InferInput("IMAGE_PATH", [len(paths)], "BYTES")
     img_input.set_data_from_numpy(path_data)
 
-    async with sem:
-        try:
-            result = await client.infer(
-                model_name=model,
-                inputs=[img_input],
-                outputs=[grpcclient.InferRequestedOutput("EMBEDDING")],
-            )
-        except Exception as exc:
-            print(f"[{index:4d}/{total}] {path.name}  ERROR: {exc}", file=sys.stderr)
-            return False
+    try:
+        result = await client.infer(
+            model_name=model,
+            inputs=[img_input],
+            outputs=[grpcclient.InferRequestedOutput("EMBEDDING")],
+        )
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return False
 
-    emb = result.as_numpy("EMBEDDING")[0]
-    results[path] = emb
-    print(f"[{index:4d}/{total}] {path.name}  img_norm={np.linalg.norm(emb):.4f}")
+    embeddings = result.as_numpy("EMBEDDING")
+    if len(embeddings) != len(paths):
+        print(
+            f"ERROR: expected {len(paths)} embeddings, got {len(embeddings)}.",
+            file=sys.stderr,
+        )
+        return False
+
+    total = len(paths)
+    for index, (path, emb) in enumerate(zip(paths, embeddings), 1):
+        results[path] = emb
+        print(f"[{index:4d}/{total}] {path.name}  img_norm={np.linalg.norm(emb):.4f}")
     return True
 
 
 async def run(args: argparse.Namespace, images: list[Path]) -> dict[Path, np.ndarray]:
     results: dict[Path, np.ndarray] = {}
-    sem = asyncio.Semaphore(args.concurrency)
 
     async with grpcclient.InferenceServerClient(url=f"{args.host}:{args.port}") as client:
-        tasks = [
-            infer_image(client, sem, args.model, path, i, len(images), results)
-            for i, path in enumerate(images, 1)
-        ]
-        succeeded = await asyncio.gather(*tasks)
+        succeeded = await infer_image(client, args.model, images, results)
 
-    print(f"\nDone: {sum(succeeded)}/{len(images)} succeeded.")
+    print(f"\nDone: {len(results) if succeeded else 0}/{len(images)} succeeded.")
     return results
 
 
@@ -76,7 +76,6 @@ def main() -> None:
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", default=8011, type=int)
     parser.add_argument("--output", type=Path, default=None)
-    parser.add_argument("--concurrency", default=32, type=int)
     args = parser.parse_args()
 
     if not args.folder.is_dir():

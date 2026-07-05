@@ -3,6 +3,7 @@
 # Copyright (c) 2025-2026 Lionel Peer
 #
 import asyncio
+import json
 
 import numpy as np
 import triton_python_backend_utils as pb_utils
@@ -15,6 +16,7 @@ _CROP_WIDTH_INPUT = "CROP_WIDTH"
 _CROP_HEIGHT_INPUT = "CROP_HEIGHT"
 _EMBEDDING_OUTPUT = "EMBEDDING"
 _INTERNAL_EMBEDDING_OUTPUT = "embeddings"
+_MAX_CONCURRENT_SUB_REQUESTS_PARAMETER = "max_concurrent_sub_requests"
 
 # The DALI preprocessing model's CROP_* inputs are required (not optional),
 # since a single ragged-length UINT8 IMAGE_PATH row can't be batched together
@@ -28,12 +30,17 @@ _NO_CROP = -1
 # a large request (e.g. thousands of image paths in one call) can exhaust
 # /dev/shm regardless of its configured size. 256 matches the TRT/DALI backends'
 # preferred_batch_size, which is the most concurrency that actually helps.
-_MAX_CONCURRENT_SUB_REQUESTS = 256
+_DEFAULT_MAX_CONCURRENT_SUB_REQUESTS = 256
 
 
 class TritonPythonModel:
     def initialize(self, args):
-        self._semaphore = asyncio.Semaphore(_MAX_CONCURRENT_SUB_REQUESTS)
+        max_concurrent_sub_requests = _get_model_parameter_int(
+            args=args,
+            name=_MAX_CONCURRENT_SUB_REQUESTS_PARAMETER,
+            default=_DEFAULT_MAX_CONCURRENT_SUB_REQUESTS,
+        )
+        self._semaphore = asyncio.Semaphore(max_concurrent_sub_requests)
 
     async def execute(self, requests):
         return list(await asyncio.gather(*(self._execute_one(request) for request in requests)))
@@ -141,6 +148,18 @@ def _scalar_int64(value):
 def _decode_string_array(values):
     flat = np.asarray(values).reshape(-1)
     return [value.decode("utf-8") if isinstance(value, bytes) else str(value) for value in flat]
+
+
+def _get_model_parameter_int(args, name, default):
+    model_config = json.loads(args["model_config"])
+    parameter = model_config.get("parameters", {}).get(name)
+    if parameter is None:
+        return default
+
+    value = int(parameter["string_value"])
+    if value < 1:
+        raise pb_utils.TritonModelException(f"{name} must be positive.")
+    return value
 
 
 def _get_crop_boxes(request, count):
