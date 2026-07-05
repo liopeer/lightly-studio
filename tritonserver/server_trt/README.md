@@ -7,12 +7,16 @@ compatibility model.
 Pipeline:
 
 ```text
-IMAGE_PATH -> image preprocessing -> TensorRT FP16 image encoder with L2 norm -> EMBEDDING
+IMAGE_PATH -> GPU preprocessing (DALI: decode, crop, resize, normalize) -> TensorRT FP16 image encoder with L2 norm -> EMBEDDING
 ```
+
+Image decode, cropping, resizing, and normalization all run on GPU via
+Triton's built-in DALI backend (`dali_pipeline.py`) -- there is no CPU/PIL
+preprocessing step.
 
 The text path is intentionally omitted.
 
-## Generate the TensorRT Plan
+## Generate the TensorRT Plan and DALI Pipeline
 
 Download the checkpoint:
 
@@ -21,13 +25,15 @@ cd server_trt
 make download
 ```
 
-Build the image engine in a CUDA/TensorRT environment:
+Build the image engine and preprocessing pipeline in a CUDA environment:
 
 ```bash
 make plan
+make dali
 ```
 
-The generated `model.plan` and intermediate `model.onnx` are ignored by git.
+The generated `model.plan`, `model.onnx`, and `model.dali` are ignored by
+git.
 
 ## Run
 

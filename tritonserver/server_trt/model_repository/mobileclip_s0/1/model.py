@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2025-2026 Lionel Peer
 #
+import asyncio
+
 import numpy as np
 import triton_python_backend_utils as pb_utils
 
@@ -13,51 +15,55 @@ _CROP_HEIGHT_INPUT = "CROP_HEIGHT"
 _EMBEDDING_OUTPUT = "EMBEDDING"
 _INTERNAL_EMBEDDING_OUTPUT = "embeddings"
 
+# The DALI preprocessing model's CROP_* inputs are required (not optional),
+# since a single ragged-length UINT8 IMAGE_PATH row can't be batched together
+# with others the way TYPE_STRING can -- each image is sent to the ensemble as
+# its own single-image request (see _infer_one_image), and this sentinel means
+# "no crop requested", resolved against the full image inside the DALI graph.
+_NO_CROP = -1
+
 
 class TritonPythonModel:
     def initialize(self, args):
         pass  # stateless; sub-models own preprocessing, inference, and normalization
 
-    def execute(self, requests):
-        responses = []
-        for request in requests:
-            image_input = pb_utils.get_input_tensor_by_name(request, _IMAGE_PATH_INPUT)
-            if image_input is None:
-                raise pb_utils.TritonModelException(f"Provide {_IMAGE_PATH_INPUT}.")
+    async def execute(self, requests):
+        return list(await asyncio.gather(*(self._execute_one(request) for request in requests)))
 
-            embedding = _infer_image_embeddings(request=request, image_input=image_input)
-            responses.append(
-                pb_utils.InferenceResponse(
-                    [
-                        pb_utils.Tensor(_EMBEDDING_OUTPUT, embedding.astype(np.float32)),
-                    ]
-                )
+    async def _execute_one(self, request):
+        image_input = pb_utils.get_input_tensor_by_name(request, _IMAGE_PATH_INPUT)
+        if image_input is None:
+            raise pb_utils.TritonModelException(f"Provide {_IMAGE_PATH_INPUT}.")
+
+        image_paths = _decode_string_array(image_input.as_numpy())
+        crop_boxes = _get_crop_boxes(request=request, count=len(image_paths))
+
+        # Fan the images in this request out as concurrent BLS sub-requests
+        # (rather than one call carrying all of them) so Triton's dynamic
+        # batcher can still coalesce them into a single batched DALI/TensorRT
+        # execution -- a single ragged-per-row UINT8 IMAGE_PATH tensor can't
+        # represent images of different path lengths the way TYPE_STRING did.
+        embeddings = await asyncio.gather(
+            *(
+                _infer_one_image(image_path=path, crop_box=crop_box)
+                for path, crop_box in zip(image_paths, crop_boxes)
             )
-
-        return responses
-
-
-def _infer_image_embeddings(request, image_input):
-    image_paths = _as_column(image_input.as_numpy())
-    inputs = [pb_utils.Tensor(_IMAGE_PATH_INPUT, image_paths)]
-    present_crop_names = set()
-    for input_name in (_CROP_X_INPUT, _CROP_Y_INPUT, _CROP_WIDTH_INPUT, _CROP_HEIGHT_INPUT):
-        crop_input = pb_utils.get_input_tensor_by_name(request, input_name)
-        if crop_input is not None:
-            present_crop_names.add(input_name)
-            inputs.append(pb_utils.Tensor(input_name, _as_column(crop_input.as_numpy())))
-
-    _validate_crop_inputs(present_crop_names=present_crop_names)
-    result = _infer_pipeline(
-        model_name="mobileclip_s0_image_pipeline",
-        inputs=inputs,
-    )
-    return pb_utils.get_output_tensor_by_name(result, _INTERNAL_EMBEDDING_OUTPUT).as_numpy()
+        )
+        stacked = np.stack(embeddings, axis=0).astype(np.float32)
+        return pb_utils.InferenceResponse([pb_utils.Tensor(_EMBEDDING_OUTPUT, stacked)])
 
 
-def _infer_pipeline(model_name, inputs):
+async def _infer_one_image(image_path, crop_box):
+    x, y, width, height = crop_box if crop_box is not None else (_NO_CROP,) * 4
+    inputs = [
+        pb_utils.Tensor(_IMAGE_PATH_INPUT, _path_to_bytes(image_path)),
+        pb_utils.Tensor(_CROP_X_INPUT, _scalar_int64(x)),
+        pb_utils.Tensor(_CROP_Y_INPUT, _scalar_int64(y)),
+        pb_utils.Tensor(_CROP_WIDTH_INPUT, _scalar_int64(width)),
+        pb_utils.Tensor(_CROP_HEIGHT_INPUT, _scalar_int64(height)),
+    ]
     infer_req = pb_utils.InferenceRequest(
-        model_name=model_name,
+        model_name="mobileclip_s0_image_pipeline",
         requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
         inputs=inputs,
         preferred_memory=pb_utils.PreferredMemory(
@@ -65,18 +71,40 @@ def _infer_pipeline(model_name, inputs):
             0,
         ),
     )
-    result = infer_req.exec()
+    result = await infer_req.async_exec()
     if result.has_error():
         raise pb_utils.TritonModelException(result.error().message())
-    return result
+    embedding = pb_utils.get_output_tensor_by_name(result, _INTERNAL_EMBEDDING_OUTPUT).as_numpy()
+    return embedding[0]
 
 
-def _as_column(values):
-    return np.asarray(values).reshape(-1, 1)
+def _path_to_bytes(path):
+    return np.frombuffer(path.encode("utf-8"), dtype=np.uint8).reshape(1, -1)
 
 
-def _validate_crop_inputs(present_crop_names):
-    crop_names = {_CROP_X_INPUT, _CROP_Y_INPUT, _CROP_WIDTH_INPUT, _CROP_HEIGHT_INPUT}
-    if present_crop_names and present_crop_names != crop_names:
-        missing = ", ".join(sorted(crop_names - present_crop_names))
+def _scalar_int64(value):
+    return np.array([[value]], dtype=np.int64)
+
+
+def _decode_string_array(values):
+    flat = np.asarray(values).reshape(-1)
+    return [value.decode("utf-8") if isinstance(value, bytes) else str(value) for value in flat]
+
+
+def _get_crop_boxes(request, count):
+    crop_names = (_CROP_X_INPUT, _CROP_Y_INPUT, _CROP_WIDTH_INPUT, _CROP_HEIGHT_INPUT)
+    crop_inputs = {name: pb_utils.get_input_tensor_by_name(request, name) for name in crop_names}
+    present_names = {name for name, value in crop_inputs.items() if value is not None}
+
+    if not present_names:
+        return [None] * count
+    if present_names != set(crop_names):
+        missing = ", ".join(sorted(set(crop_names) - present_names))
         raise pb_utils.TritonModelException(f"Missing crop inputs: {missing}.")
+
+    xs, ys, widths, heights = (
+        np.asarray(crop_inputs[name].as_numpy()).reshape(-1) for name in crop_names
+    )
+    return [
+        (int(xs[i]), int(ys[i]), int(widths[i]), int(heights[i])) for i in range(count)
+    ]

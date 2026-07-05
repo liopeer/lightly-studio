@@ -2,3 +2,4 @@ coco128_yolo
 server_trt/checkpoints/
 server_trt/model_repository/**/*.onnx
 server_trt/model_repository/**/*.plan
+server_trt/model_repository/**/*.dali
