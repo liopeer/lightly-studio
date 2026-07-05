@@ -243,6 +243,7 @@ def _export_onnx(
         dynamo=True,
         dynamic_shapes=({0: batch_dim},),
         opset_version=opset_version,
+        external_data=False,
     )
 
 

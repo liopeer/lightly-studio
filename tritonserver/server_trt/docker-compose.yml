@@ -1,0 +1,39 @@
+##
+## SPDX-License-Identifier: MIT
+## Copyright (c) 2025-2026 Lionel Peer
+##
+services:
+  model-downloader:
+    image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+    container_name: model-downloader-trt
+    volumes:
+      - ./checkpoints:/workspace/checkpoints
+      - ./download_models.sh:/workspace/download_models.sh
+    working_dir: /workspace
+    command: bash /workspace/download_models.sh
+
+  triton-server-trt:
+    build:
+      context: ..
+      dockerfile: server_trt/Dockerfile
+    container_name: triton-server-trt
+    command: tritonserver --model-repository=/models --log-verbose=1
+    depends_on:
+      model-downloader:
+        condition: service_completed_successfully
+    ports:
+      - "8010:8000"  # HTTP
+      - "8011:8001"  # gRPC
+      - "8012:8002"  # Metrics
+    volumes:
+      - ./model_repository:/models
+      - ./checkpoints:/checkpoints
+      - /home/lionel/Datasets/coco2017/val2017:/home/lionel/Datasets/coco2017/val2017:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped

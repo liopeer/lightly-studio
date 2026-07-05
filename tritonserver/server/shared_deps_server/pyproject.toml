@@ -23,7 +23,7 @@ export = [
 tensorrt = [
     "onnx>=1.16",
     "onnxscript>=0.1",
-    "tensorrt-cu12==10.13.3.9",
+    "tensorrt-cu12==10.9.0.34",
 ]
 
 [project.scripts]
