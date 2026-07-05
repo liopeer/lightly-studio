@@ -26,7 +26,7 @@ class TritonPythonModel:
                 pb_utils.get_input_tensor_by_name(request, _IMAGE_PATH_INPUT).as_numpy()
             )
             image_tensor = self.preprocessor(
-                image_path=image_path,
+                image_path,
                 crop_box=_get_crop_box(request=request),
             )  # [3, H, W]
             out_tensor = pb_utils.Tensor("images", image_tensor.numpy().astype(np.float32))

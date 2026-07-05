@@ -28,6 +28,7 @@ services:
     volumes:
       - ./model_repository:/models
       - ./checkpoints:/checkpoints
+      - /home/lionel/Datasets/coco2017/val2017:/home/lionel/Datasets/coco2017/val2017:ro
     deploy:
       resources:
         reservations:
