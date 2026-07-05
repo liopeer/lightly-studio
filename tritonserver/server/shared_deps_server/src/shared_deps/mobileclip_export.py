@@ -135,6 +135,7 @@ def export_mobileclip_image_tensorrt(
     min_batch_size: int = 1,
     opt_batch_size: int = 64,
     max_batch_size: int = 256,
+    workspace_size_gib: int = 1,
     onnx_out: str | Path | None = None,
     normalize_embeddings: bool = False,
 ) -> None:
@@ -157,6 +158,7 @@ def export_mobileclip_image_tensorrt(
         min_batch_size=min_batch_size,
         opt_batch_size=opt_batch_size,
         max_batch_size=max_batch_size,
+        workspace_size_gib=workspace_size_gib,
     )
 
 
@@ -169,6 +171,7 @@ def export_mobileclip_text_tensorrt(
     min_batch_size: int = 1,
     opt_batch_size: int = 64,
     max_batch_size: int = 256,
+    workspace_size_gib: int = 1,
     onnx_out: str | Path | None = None,
     normalize_embeddings: bool = False,
 ) -> None:
@@ -191,6 +194,7 @@ def export_mobileclip_text_tensorrt(
         min_batch_size=min_batch_size,
         opt_batch_size=opt_batch_size,
         max_batch_size=max_batch_size,
+        workspace_size_gib=workspace_size_gib,
     )
 
 
@@ -288,6 +292,7 @@ def _build_tensorrt_engine(
     min_batch_size: int,
     opt_batch_size: int,
     max_batch_size: int,
+    workspace_size_gib: int = 1,
 ) -> None:
     try:
         import tensorrt as trt  # type: ignore[import-not-found,import-untyped]
@@ -299,6 +304,8 @@ def _build_tensorrt_engine(
 
     if not (min_batch_size <= opt_batch_size <= max_batch_size):
         raise ValueError("Batch sizes must satisfy: min <= opt <= max")
+    if workspace_size_gib < 1:
+        raise ValueError("Workspace size must be at least 1 GiB")
 
     trt_logger = trt.Logger(trt.Logger.INFO)
     builder = trt.Builder(trt_logger)
@@ -319,7 +326,10 @@ def _build_tensorrt_engine(
         raise ValueError("Only the batch dimension may be dynamic for TensorRT export.")
 
     config = builder.create_builder_config()
-    config.set_memory_pool_limit(trt.MemoryPoolType.WORKSPACE, 1 << 30)
+    config.set_memory_pool_limit(
+        trt.MemoryPoolType.WORKSPACE,
+        workspace_size_gib << 30,
+    )
     if hasattr(trt.BuilderFlag, "TF32"):
         config.clear_flag(trt.BuilderFlag.TF32)
     if precision == "fp16":
@@ -374,6 +384,7 @@ def _parse_common_args(
     if tensorrt:
         parser.add_argument("--min-batch-size", type=int, default=1)
         parser.add_argument("--opt-batch-size", type=int, default=64)
+        parser.add_argument("--workspace-size-gib", type=int, default=1)
         parser.add_argument("--onnx-out", type=Path)
     else:
         parser.add_argument("--batch-size", type=int, default=1)
