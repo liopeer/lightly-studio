@@ -28,7 +28,7 @@ def main() -> None:
     parser.add_argument("--folder", required=True, type=Path)
     parser.add_argument("--model", default="mobileclip_s0", choices=MODELS)
     parser.add_argument("--host", default="localhost")
-    parser.add_argument("--port", default=8001, type=int)
+    parser.add_argument("--port", default=8011, type=int)
     parser.add_argument("--output", type=Path, default=None)
     args = parser.parse_args()
 
