@@ -46,8 +46,9 @@ class MobileCLIPTextBackend(nn.Module):
             pretrained=checkpoint_path,
             reparameterize=True,
         )
+        # Keep the encoder in fp16 internally while preserving fp32 API outputs.
         self._encoder = mobileclip_compile.compile_encoder_for_inference(
-            model.text_encoder
+            model.text_encoder.half()
         )  # TextTransformer
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
@@ -58,4 +59,4 @@ class MobileCLIPTextBackend(nn.Module):
         Returns:
             float32 tensor of shape [B, embed_dim] — NOT L2-normalized.
         """
-        return self._encoder(tokens)
+        return self._encoder(tokens).float()

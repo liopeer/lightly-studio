@@ -88,8 +88,13 @@ class TestTorchCompile:
 
     def test_image_backend_compiled_encoder_forward_pass(self, monkeypatch):
         class ImageEncoder(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.scale = torch.nn.Parameter(torch.ones(1))
+
             def forward(self, images: torch.Tensor) -> torch.Tensor:
-                return images.mean(dim=(2, 3))
+                assert images.dtype == torch.float16
+                return images.mean(dim=(2, 3)) * self.scale
 
         class Model(torch.nn.Module):
             def __init__(self) -> None:
@@ -109,12 +114,18 @@ class TestTorchCompile:
 
         output = backend(torch.ones(2, 3, 4, 4))
 
+        assert next(backend._encoder.parameters()).dtype == torch.float16
+        assert output.dtype == torch.float32
         torch.testing.assert_close(output, torch.ones(2, 3))
 
     def test_text_backend_compiled_encoder_forward_pass(self, monkeypatch):
         class TextEncoder(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.embedding = torch.nn.Embedding(9, 3)
+
             def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-                return tokens[:, :3].float()
+                return self.embedding(tokens[:, 0])
 
         class Model(torch.nn.Module):
             def __init__(self) -> None:
@@ -132,10 +143,17 @@ class TestTorchCompile:
             model_name="mobileclip_s0", checkpoint_path="checkpoint.pt"
         )
 
+        with torch.no_grad():
+            backend._encoder._orig_mod.embedding.weight.copy_(
+                torch.arange(27, dtype=torch.float16).reshape(9, 3)
+            )
+
         output = backend(torch.tensor([[1, 2, 3, 4], [5, 6, 7, 8]]))
 
+        assert next(backend._encoder.parameters()).dtype == torch.float16
+        assert output.dtype == torch.float32
         torch.testing.assert_close(
-            output, torch.tensor([[1.0, 2.0, 3.0], [5.0, 6.0, 7.0]])
+            output, torch.tensor([[3.0, 4.0, 5.0], [15.0, 16.0, 17.0]])
         )
 
 

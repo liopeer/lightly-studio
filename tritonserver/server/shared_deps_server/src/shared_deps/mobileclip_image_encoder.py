@@ -88,8 +88,9 @@ class MobileCLIPTorchBackend(nn.Module):
             reparameterize=True,
         )
         # Detach from the full CLIP graph; text encoder and logit_scale are not needed.
+        # Keep the encoder in fp16 internally while preserving fp32 API outputs.
         self._encoder = mobileclip_compile.compile_encoder_for_inference(
-            model.image_encoder
+            model.image_encoder.half()
         )
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
@@ -102,8 +103,9 @@ class MobileCLIPTorchBackend(nn.Module):
             Normalization is the proxy's responsibility so the backend output
             can be cached or reused before normalization if needed.
         """
+        images = images.to(dtype=torch.float16)
         out = self._encoder(images)
         # MCi may return a dict (e.g. when output_dict=True is propagated).
         if isinstance(out, dict):
-            return out["logits"]
-        return out
+            return out["logits"].float()
+        return out.float()
