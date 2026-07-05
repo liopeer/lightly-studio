@@ -26,6 +26,7 @@ $(PLAN): $(CHECKPOINT)
 		--min-batch-size 1 \
 		--opt-batch-size 64 \
 		--max-batch-size 256 \
+		--normalize-embeddings \
 		--out $(PLAN) \
 		--onnx-out $(ONNX)
 

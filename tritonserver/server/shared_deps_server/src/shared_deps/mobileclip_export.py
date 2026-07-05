@@ -11,6 +11,7 @@ from typing import Literal
 
 import torch
 import torch.nn as nn
+import torch.nn.functional
 
 from shared_deps.mobileclip_image_encoder import MOBILECLIP_CONFIGS
 
@@ -25,26 +26,34 @@ _TEXT_CONTEXT_LENGTH = 77
 class MobileCLIPImageExportWrapper(nn.Module):
     """Image export wrapper preserving the existing FP32 public API."""
 
-    def __init__(self, encoder: nn.Module) -> None:
+    def __init__(self, encoder: nn.Module, normalize_embeddings: bool = False) -> None:
         super().__init__()
         self.encoder = encoder.half().eval()
+        self.normalize_embeddings = normalize_embeddings
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         out = self.encoder(images.to(dtype=torch.float16))
         if isinstance(out, dict):
             out = out["logits"]
-        return out.float()
+        embeddings = out.float()
+        if self.normalize_embeddings:
+            return _normalize_embeddings(embeddings)
+        return embeddings
 
 
 class MobileCLIPTextExportWrapper(nn.Module):
     """Text export wrapper preserving the existing INT64 input / FP32 output API."""
 
-    def __init__(self, encoder: nn.Module) -> None:
+    def __init__(self, encoder: nn.Module, normalize_embeddings: bool = False) -> None:
         super().__init__()
         self.encoder = encoder.half().eval()
+        self.normalize_embeddings = normalize_embeddings
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-        return self.encoder(tokens).float()
+        embeddings = self.encoder(tokens).float()
+        if self.normalize_embeddings:
+            return _normalize_embeddings(embeddings)
+        return embeddings
 
 
 def export_mobileclip_image_onnx(
@@ -56,6 +65,7 @@ def export_mobileclip_image_onnx(
     max_batch_size: int = 256,
     precision: Precision = "fp16",
     opset_version: int = 18,
+    normalize_embeddings: bool = False,
 ) -> None:
     """Export a MobileCLIP image encoder to ONNX using torch dynamo."""
     if model_name not in MOBILECLIP_CONFIGS:
@@ -67,6 +77,7 @@ def export_mobileclip_image_onnx(
         model_name=model_name,
         checkpoint_path=checkpoint_path,
         precision=precision,
+        normalize_embeddings=normalize_embeddings,
     )
     example_images = torch.zeros(
         batch_size,
@@ -94,6 +105,7 @@ def export_mobileclip_text_onnx(
     max_batch_size: int = 256,
     precision: Precision = "fp16",
     opset_version: int = 18,
+    normalize_embeddings: bool = False,
 ) -> None:
     """Export a MobileCLIP text encoder to ONNX using torch dynamo."""
     model = _load_mobileclip_export_model(
@@ -101,6 +113,7 @@ def export_mobileclip_text_onnx(
         model_name=model_name,
         checkpoint_path=checkpoint_path,
         precision=precision,
+        normalize_embeddings=normalize_embeddings,
     )
     example_tokens = torch.zeros(batch_size, _TEXT_CONTEXT_LENGTH, dtype=torch.long)
     _export_onnx(
@@ -123,6 +136,7 @@ def export_mobileclip_image_tensorrt(
     opt_batch_size: int = 64,
     max_batch_size: int = 256,
     onnx_out: str | Path | None = None,
+    normalize_embeddings: bool = False,
 ) -> None:
     """Export a MobileCLIP image encoder to a TensorRT plan."""
     out = Path(out)
@@ -133,6 +147,7 @@ def export_mobileclip_image_tensorrt(
         checkpoint_path=checkpoint_path,
         max_batch_size=max_batch_size,
         precision=precision,
+        normalize_embeddings=normalize_embeddings,
     )
     _build_tensorrt_engine(
         onnx_path=onnx_out,
@@ -155,6 +170,7 @@ def export_mobileclip_text_tensorrt(
     opt_batch_size: int = 64,
     max_batch_size: int = 256,
     onnx_out: str | Path | None = None,
+    normalize_embeddings: bool = False,
 ) -> None:
     """Export a MobileCLIP text encoder to a TensorRT plan."""
     out = Path(out)
@@ -165,6 +181,7 @@ def export_mobileclip_text_tensorrt(
         checkpoint_path=checkpoint_path,
         max_batch_size=max_batch_size,
         precision=precision,
+        normalize_embeddings=normalize_embeddings,
     )
     _build_tensorrt_engine(
         onnx_path=onnx_out,
@@ -203,6 +220,7 @@ def _load_mobileclip_export_model(
     model_name: str,
     checkpoint_path: str | Path,
     precision: Precision,
+    normalize_embeddings: bool,
 ) -> nn.Module:
     from shared_deps import mobileclip
 
@@ -212,12 +230,26 @@ def _load_mobileclip_export_model(
         reparameterize=True,
     )
     if encoder_name == "image":
-        export_model: nn.Module = MobileCLIPImageExportWrapper(model.image_encoder)
+        export_model: nn.Module = MobileCLIPImageExportWrapper(
+            model.image_encoder,
+            normalize_embeddings=normalize_embeddings,
+        )
     else:
-        export_model = MobileCLIPTextExportWrapper(model.text_encoder)
+        export_model = MobileCLIPTextExportWrapper(
+            model.text_encoder,
+            normalize_embeddings=normalize_embeddings,
+        )
     if precision == "fp32":
         export_model.float()
     return export_model.eval()
+
+
+def _normalize_embeddings(embeddings: torch.Tensor) -> torch.Tensor:
+    return torch.nn.functional.normalize(
+        embeddings,
+        dim=-1,
+        eps=torch.finfo(torch.float32).eps,
+    )
 
 
 @torch.no_grad()
@@ -338,6 +370,7 @@ def _parse_common_args(
     )
     parser.add_argument("--precision", choices=("fp16", "fp32"), default="fp16")
     parser.add_argument("--max-batch-size", type=int, default=256)
+    parser.add_argument("--normalize-embeddings", action="store_true")
     if tensorrt:
         parser.add_argument("--min-batch-size", type=int, default=1)
         parser.add_argument("--opt-batch-size", type=int, default=64)

@@ -52,6 +52,38 @@ class TestMobileCLIPExportWrappers:
             output, torch.tensor([[3.0, 4.0, 5.0], [15.0, 16.0, 17.0]])
         )
 
+    def test_image_wrapper_optionally_normalizes_embeddings(self):
+        wrapper = mobileclip_export.MobileCLIPImageExportWrapper(
+            _ImageEncoder(),
+            normalize_embeddings=True,
+        )
+
+        output = wrapper(torch.ones(2, 3, 4, 4, dtype=torch.float32))
+
+        assert output.dtype == torch.float32
+        torch.testing.assert_close(
+            torch.linalg.norm(output, dim=-1),
+            torch.ones(2),
+        )
+
+    def test_text_wrapper_optionally_normalizes_embeddings(self):
+        wrapper = mobileclip_export.MobileCLIPTextExportWrapper(
+            _TextEncoder(),
+            normalize_embeddings=True,
+        )
+        with torch.no_grad():
+            wrapper.encoder.embedding.weight.copy_(
+                torch.arange(30, dtype=torch.float16).reshape(10, 3)
+            )
+
+        output = wrapper(torch.tensor([[1, 2], [5, 6]], dtype=torch.long))
+
+        assert output.dtype == torch.float32
+        torch.testing.assert_close(
+            torch.linalg.norm(output, dim=-1),
+            torch.ones(2),
+        )
+
 
 class TestMobileCLIPONNXExport:
     def test_image_export_writes_onnx_with_dynamo(self, tmp_path):
@@ -88,6 +120,46 @@ class TestMobileCLIPONNXExport:
 
         assert out.is_file()
 
+    def test_normalized_image_export_writes_onnx_with_dynamo(self, tmp_path):
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        out = tmp_path / "normalized_image.onnx"
+        model = mobileclip_export.MobileCLIPImageExportWrapper(
+            _ImageEncoder(),
+            normalize_embeddings=True,
+        )
+
+        mobileclip_export._export_onnx(
+            model=model,
+            example_input=torch.zeros(2, 3, 8, 8, dtype=torch.float32),
+            out=out,
+            input_name="images",
+            max_batch_size=8,
+            opset_version=18,
+        )
+
+        assert out.is_file()
+
+    def test_normalized_text_export_writes_onnx_with_dynamo(self, tmp_path):
+        pytest.importorskip("onnx")
+        pytest.importorskip("onnxscript")
+        out = tmp_path / "normalized_text.onnx"
+        model = mobileclip_export.MobileCLIPTextExportWrapper(
+            _TextEncoder(),
+            normalize_embeddings=True,
+        )
+
+        mobileclip_export._export_onnx(
+            model=model,
+            example_input=torch.zeros(2, 77, dtype=torch.long),
+            out=out,
+            input_name="tokens",
+            max_batch_size=8,
+            opset_version=18,
+        )
+
+        assert out.is_file()
+
 
 class TestMobileCLIPTensorRTExport:
     def test_image_onnx_builds_tensorrt_plan(self, tmp_path):
@@ -98,7 +170,10 @@ class TestMobileCLIPTensorRTExport:
         plan_out = tmp_path / "image.plan"
 
         mobileclip_export._export_onnx(
-            model=mobileclip_export.MobileCLIPImageExportWrapper(_ImageEncoder()),
+            model=mobileclip_export.MobileCLIPImageExportWrapper(
+                _ImageEncoder(),
+                normalize_embeddings=True,
+            ),
             example_input=torch.zeros(1, 3, 8, 8, dtype=torch.float32),
             out=onnx_out,
             input_name="images",

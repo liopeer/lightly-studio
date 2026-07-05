@@ -7,7 +7,7 @@ compatibility model.
 Pipeline:
 
 ```text
-IMAGE_PATH -> image preprocessing -> TensorRT FP16 image encoder -> L2 norm -> EMBEDDING
+IMAGE_PATH -> image preprocessing -> TensorRT FP16 image encoder with L2 norm -> EMBEDDING
 ```
 
 The text path is intentionally omitted.
