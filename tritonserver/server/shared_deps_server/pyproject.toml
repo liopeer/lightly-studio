@@ -15,7 +15,20 @@ dependencies = [
     "torch>=2.5,<3",
 ]
 
+[project.optional-dependencies]
+export = [
+    "onnx>=1.16",
+    "onnxscript>=0.1",
+]
+tensorrt = [
+    "onnx>=1.16",
+    "onnxscript>=0.1",
+    "tensorrt-cu12==10.13.3.9",
+]
+
 [project.scripts]
+mobileclip-export-onnx = "shared_deps.mobileclip_export:main_export_onnx"
+mobileclip-export-tensorrt = "shared_deps.mobileclip_export:main_export_tensorrt"
 shared-deps = "shared_deps:main"
 
 [dependency-groups]
