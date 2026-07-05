@@ -1,8 +1,8 @@
 name: "mobileclip_s0_image_preprocessing"
 backend: "dali"
-max_batch_size: 64
+max_batch_size: 256
 dynamic_batching {
-  preferred_batch_size: [ 64 ]
+  preferred_batch_size: [ 256 ]
 }
 input [
   {

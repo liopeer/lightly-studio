@@ -16,7 +16,7 @@ ONNX := $(ENGINE_DIR)/model.onnx
 TRITON_IMAGE := nvcr.io/nvidia/tritonserver:25.03-py3
 DALI_DIR := model_repository/mobileclip_s0_image_preprocessing/1
 DALI_PIPELINE := $(DALI_DIR)/model.dali
-DALI_MAX_BATCH_SIZE := 64
+DALI_MAX_BATCH_SIZE := 256
 
 .PHONY: download plan dali up down logs clean
 
