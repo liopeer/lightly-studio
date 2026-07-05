@@ -60,6 +60,10 @@ def _infer_pipeline(model_name, inputs):
         model_name=model_name,
         requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
         inputs=inputs,
+        preferred_memory=pb_utils.PreferredMemory(
+            pb_utils.TRITONSERVER_MEMORY_CPU,
+            0,
+        ),
     )
     result = infer_req.exec()
     if result.has_error():
