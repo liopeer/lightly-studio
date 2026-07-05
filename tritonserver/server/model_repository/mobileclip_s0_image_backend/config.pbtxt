@@ -1,6 +1,6 @@
 name: "mobileclip_s0_image_backend"
 backend: "python"
-max_batch_size: 64
+max_batch_size: 256
 dynamic_batching { }
 input [
   {
