@@ -6,6 +6,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from shared_deps import mobileclip_compile
+
 
 class MobileCLIPTextPreprocessor:
     """Tokenizes a UTF-8 string into a fixed-length int64 token array (context_length=77)."""
@@ -44,7 +46,9 @@ class MobileCLIPTextBackend(nn.Module):
             pretrained=checkpoint_path,
             reparameterize=True,
         )
-        self._encoder = model.text_encoder  # TextTransformer
+        self._encoder = mobileclip_compile.compile_encoder_for_inference(
+            model.text_encoder
+        )  # TextTransformer
 
     def forward(self, tokens: torch.Tensor) -> torch.Tensor:
         """

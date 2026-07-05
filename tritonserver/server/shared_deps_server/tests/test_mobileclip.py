@@ -8,7 +8,13 @@ import torch
 from PIL import Image
 
 from shared_deps import mobileclip
-from shared_deps import MobileCLIPPreprocessor, MobileCLIPVariantConfig, MOBILECLIP_CONFIGS
+from shared_deps import mobileclip_compile
+from shared_deps import (
+    MOBILECLIP_CONFIGS,
+    MobileCLIPPreprocessor,
+    MobileCLIPTextBackend,
+    MobileCLIPTorchBackend,
+)
 
 
 def _make_image_path(tmp_path, width: int = 64, height: int = 64):
@@ -68,13 +74,84 @@ class TestMobileCLIPPreprocessor:
         assert torch.allclose(cropped, uncropped)
 
 
+class TestTorchCompile:
+    def test_compiled_encoder_forward_pass(self):
+        class AddOne(torch.nn.Module):
+            def forward(self, inputs: torch.Tensor) -> torch.Tensor:
+                return inputs + 1
+
+        encoder = mobileclip_compile.compile_encoder_for_inference(AddOne())
+
+        output = encoder(torch.zeros(2, 3))
+
+        torch.testing.assert_close(output, torch.ones(2, 3))
+
+    def test_image_backend_compiled_encoder_forward_pass(self, monkeypatch):
+        class ImageEncoder(torch.nn.Module):
+            def forward(self, images: torch.Tensor) -> torch.Tensor:
+                return images.mean(dim=(2, 3))
+
+        class Model(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.image_encoder = ImageEncoder()
+
+        def create_model_and_transforms(**kwargs):
+            assert kwargs["reparameterize"] is True
+            return Model(), None, None
+
+        monkeypatch.setattr(
+            mobileclip, "create_model_and_transforms", create_model_and_transforms
+        )
+        backend = MobileCLIPTorchBackend(
+            model_name="mobileclip_s0", checkpoint_path="checkpoint.pt"
+        )
+
+        output = backend(torch.ones(2, 3, 4, 4))
+
+        torch.testing.assert_close(output, torch.ones(2, 3))
+
+    def test_text_backend_compiled_encoder_forward_pass(self, monkeypatch):
+        class TextEncoder(torch.nn.Module):
+            def forward(self, tokens: torch.Tensor) -> torch.Tensor:
+                return tokens[:, :3].float()
+
+        class Model(torch.nn.Module):
+            def __init__(self) -> None:
+                super().__init__()
+                self.text_encoder = TextEncoder()
+
+        def create_model_and_transforms(**kwargs):
+            assert kwargs["reparameterize"] is True
+            return Model(), None, None
+
+        monkeypatch.setattr(
+            mobileclip, "create_model_and_transforms", create_model_and_transforms
+        )
+        backend = MobileCLIPTextBackend(
+            model_name="mobileclip_s0", checkpoint_path="checkpoint.pt"
+        )
+
+        output = backend(torch.tensor([[1, 2, 3, 4], [5, 6, 7, 8]]))
+
+        torch.testing.assert_close(
+            output, torch.tensor([[1.0, 2.0, 3.0], [5.0, 6.0, 7.0]])
+        )
+
+
 class TestMobileCLIPImport:
     def test_create_model_and_transforms_importable(self):
         assert callable(mobileclip.create_model_and_transforms)
 
     def test_configs_loadable(self):
-        for model_name in ("mobileclip_s0", "mobileclip_s1", "mobileclip_s2", "mobileclip_b"):
-            import json, os
+        for model_name in (
+            "mobileclip_s0",
+            "mobileclip_s1",
+            "mobileclip_s2",
+            "mobileclip_b",
+        ):
+            import json
+            import os
 
             configs_dir = os.path.join(os.path.dirname(mobileclip.__file__), "configs")
             cfg = json.load(open(os.path.join(configs_dir, f"{model_name}.json")))
@@ -83,4 +160,6 @@ class TestMobileCLIPImport:
     def test_no_open_clip_on_import(self):
         import sys
 
-        assert "open_clip" not in sys.modules, "open_clip must not be imported at module load time"
+        assert "open_clip" not in sys.modules, (
+            "open_clip must not be imported at module load time"
+        )

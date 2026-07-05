@@ -4,11 +4,18 @@
 #
 from dataclasses import dataclass
 
-import numpy as np
 import torch
 import torch.nn as nn
 from PIL import Image
-from torchvision.transforms import CenterCrop, Compose, InterpolationMode, Resize, ToTensor
+from torchvision.transforms import (
+    CenterCrop,
+    Compose,
+    InterpolationMode,
+    Resize,
+    ToTensor,
+)
+
+from shared_deps import mobileclip_compile
 
 
 # All MobileCLIP variants share embed_dim=512; image_size differs only for s0.
@@ -81,7 +88,9 @@ class MobileCLIPTorchBackend(nn.Module):
             reparameterize=True,
         )
         # Detach from the full CLIP graph; text encoder and logit_scale are not needed.
-        self._encoder = model.image_encoder
+        self._encoder = mobileclip_compile.compile_encoder_for_inference(
+            model.image_encoder
+        )
 
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
