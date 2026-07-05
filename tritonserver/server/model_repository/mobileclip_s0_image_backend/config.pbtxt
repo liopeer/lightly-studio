@@ -20,3 +20,9 @@ parameters {
   key: "checkpoint_path"
   value: { string_value: "/checkpoints/mobileclip_s0.pt" }
 }
+instance_group [
+  {
+    kind: KIND_GPU
+    count: 4
+  }
+]
