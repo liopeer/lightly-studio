@@ -101,7 +101,7 @@ def export_mobileclip_text_onnx(
     out: str | Path,
     model_name: str,
     checkpoint_path: str | Path,
-    batch_size: int = 1,
+    batch_size: int = 2,
     max_batch_size: int = 256,
     precision: Precision = "fp16",
     opset_version: int = 18,
@@ -115,6 +115,11 @@ def export_mobileclip_text_onnx(
         precision=precision,
         normalize_embeddings=normalize_embeddings,
     )
+    # torch.export specializes the dynamic batch dim when traced with an
+    # example batch size of exactly 1 (it treats 1 as broadcastable), which
+    # for this model's EOT-embedding gather produces a self-contradictory
+    # generalization guard. Tracing with batch_size >= 2 avoids that trap;
+    # the exported graph still generalizes down to batch size 1 at runtime.
     example_tokens = torch.zeros(batch_size, _TEXT_CONTEXT_LENGTH, dtype=torch.long)
     _export_onnx(
         model=model,

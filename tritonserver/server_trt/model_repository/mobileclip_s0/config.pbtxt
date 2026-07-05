@@ -6,6 +6,13 @@ input [
     name: "IMAGE_PATH"
     data_type: TYPE_STRING
     dims: [ -1 ]
+    optional: true
+  },
+  {
+    name: "TEXT"
+    data_type: TYPE_STRING
+    dims: [ -1 ]
+    optional: true
   },
   {
     name: "CROP_X"

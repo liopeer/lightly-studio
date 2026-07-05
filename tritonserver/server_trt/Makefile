@@ -9,6 +9,10 @@ ENGINE_DIR := model_repository/mobileclip_s0_image_backend_trt/1
 PLAN := $(ENGINE_DIR)/model.plan
 ONNX := $(ENGINE_DIR)/model.onnx
 
+TEXT_ENGINE_DIR := model_repository/mobileclip_s0_text_backend_trt/1
+TEXT_PLAN := $(TEXT_ENGINE_DIR)/model.plan
+TEXT_ONNX := $(TEXT_ENGINE_DIR)/model.onnx
+
 # Preprocessing runs as a DALI pipeline serialized to model.dali. It's built
 # by running the same tritonserver image the server itself uses (rather than
 # adding nvidia-dali as a shared_deps_server dependency), so the DALI version
@@ -40,10 +44,27 @@ $(PLAN): $(CHECKPOINT)
 		--out $(PLAN) \
 		--onnx-out $(ONNX)
 
+$(TEXT_PLAN): $(CHECKPOINT)
+	uv run \
+		--project ../server/shared_deps_server \
+		--extra tensorrt \
+		mobileclip-export-tensorrt \
+		--encoder text \
+		--model-name $(MODEL_NAME) \
+		--checkpoint-path $(CHECKPOINT) \
+		--precision fp16 \
+		--min-batch-size 1 \
+		--opt-batch-size 256 \
+		--max-batch-size 1024 \
+		--workspace-size-gib 8 \
+		--normalize-embeddings \
+		--out $(TEXT_PLAN) \
+		--onnx-out $(TEXT_ONNX)
+
 $(CHECKPOINT):
 	$(MAKE) download
 
-plan: $(PLAN)
+plan: $(PLAN) $(TEXT_PLAN)
 
 $(DALI_PIPELINE): dali_pipeline.py
 	mkdir -p $(DALI_DIR)
@@ -56,7 +77,7 @@ $(DALI_PIPELINE): dali_pipeline.py
 
 dali: $(DALI_PIPELINE)
 
-up: $(PLAN) $(DALI_PIPELINE)
+up: $(PLAN) $(TEXT_PLAN) $(DALI_PIPELINE)
 	docker compose up -d --build
 
 down:
@@ -66,4 +87,4 @@ logs:
 	docker compose logs -f triton-server-trt
 
 clean:
-	rm -f $(PLAN) $(ONNX) $(DALI_PIPELINE)
+	rm -f $(PLAN) $(ONNX) $(TEXT_PLAN) $(TEXT_ONNX) $(DALI_PIPELINE)

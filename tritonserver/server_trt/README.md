@@ -1,22 +1,22 @@
 # MobileCLIP-S0 TensorRT Triton Server
 
-This is a secondary Triton setup for the MobileCLIP-S0 image encoder. It keeps
-the existing `server/` setup unchanged and exposes an image-only `mobileclip_s0`
-compatibility model.
+This is a secondary Triton setup for the MobileCLIP-S0 image and text
+encoders. It keeps the existing `server/` setup unchanged and exposes a
+`mobileclip_s0` compatibility model that accepts either input.
 
-Pipeline:
+Pipelines:
 
 ```text
 IMAGE_PATH -> GPU preprocessing (DALI: decode, crop, resize, normalize) -> TensorRT FP16 image encoder with L2 norm -> EMBEDDING
+TEXT       -> CPU tokenization (Python backend)                          -> TensorRT FP16 text encoder with L2 norm  -> EMBEDDING
 ```
 
 Image decode, cropping, resizing, and normalization all run on GPU via
 Triton's built-in DALI backend (`dali_pipeline.py`) -- there is no CPU/PIL
-preprocessing step.
+preprocessing step. Text tokenization has no DALI equivalent, so it runs as a
+lightweight CPU Python-backend step before the TensorRT text encoder.
 
-The text path is intentionally omitted.
-
-## Generate the TensorRT Plan and DALI Pipeline
+## Generate the TensorRT Plans and DALI Pipeline
 
 Download the checkpoint:
 
@@ -25,15 +25,16 @@ cd server_trt
 make download
 ```
 
-Build the image engine and preprocessing pipeline in a CUDA environment:
+Build the image and text engines and the image preprocessing pipeline in a
+CUDA environment:
 
 ```bash
 make plan
 make dali
 ```
 
-The generated `model.plan`, `model.onnx`, and `model.dali` are ignored by
-git.
+The generated `model.plan`, `model.onnx`, and `model.dali` files are ignored
+by git.
 
 ## Run
 
@@ -48,8 +49,8 @@ metrics so it can run alongside the original server.
 The public model interface is:
 
 - Model: `mobileclip_s0`
-- Input: `IMAGE_PATH`
-- Optional crop inputs: `CROP_X`, `CROP_Y`, `CROP_WIDTH`, `CROP_HEIGHT`
+- Input: either `IMAGE_PATH` or `TEXT` (exactly one of the two)
+- Optional crop inputs (with `IMAGE_PATH` only): `CROP_X`, `CROP_Y`, `CROP_WIDTH`, `CROP_HEIGHT`
 - Output: `EMBEDDING`
 
 Image files must be visible inside the container at the same path passed to

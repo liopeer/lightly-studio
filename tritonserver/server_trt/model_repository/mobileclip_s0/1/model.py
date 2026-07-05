@@ -8,6 +8,7 @@ import numpy as np
 import triton_python_backend_utils as pb_utils
 
 _IMAGE_PATH_INPUT = "IMAGE_PATH"
+_TEXT_INPUT = "TEXT"
 _CROP_X_INPUT = "CROP_X"
 _CROP_Y_INPUT = "CROP_Y"
 _CROP_WIDTH_INPUT = "CROP_WIDTH"
@@ -32,23 +33,39 @@ class TritonPythonModel:
 
     async def _execute_one(self, request):
         image_input = pb_utils.get_input_tensor_by_name(request, _IMAGE_PATH_INPUT)
-        if image_input is None:
-            raise pb_utils.TritonModelException(f"Provide {_IMAGE_PATH_INPUT}.")
+        text_input = pb_utils.get_input_tensor_by_name(request, _TEXT_INPUT)
 
-        image_paths = _decode_string_array(image_input.as_numpy())
-        crop_boxes = _get_crop_boxes(request=request, count=len(image_paths))
-
-        # Fan the images in this request out as concurrent BLS sub-requests
-        # (rather than one call carrying all of them) so Triton's dynamic
-        # batcher can still coalesce them into a single batched DALI/TensorRT
-        # execution -- a single ragged-per-row UINT8 IMAGE_PATH tensor can't
-        # represent images of different path lengths the way TYPE_STRING did.
-        embeddings = await asyncio.gather(
-            *(
-                _infer_one_image(image_path=path, crop_box=crop_box)
-                for path, crop_box in zip(image_paths, crop_boxes)
+        if image_input is not None and text_input is not None:
+            raise pb_utils.TritonModelException(
+                f"Provide either {_IMAGE_PATH_INPUT} or {_TEXT_INPUT}, not both."
             )
-        )
+        if image_input is None and text_input is None:
+            raise pb_utils.TritonModelException(
+                f"Provide {_IMAGE_PATH_INPUT} or {_TEXT_INPUT}."
+            )
+
+        if image_input is not None:
+            image_paths = _decode_string_array(image_input.as_numpy())
+            crop_boxes = _get_crop_boxes(request=request, count=len(image_paths))
+
+            # Fan the images in this request out as concurrent BLS sub-requests
+            # (rather than one call carrying all of them) so Triton's dynamic
+            # batcher can still coalesce them into a single batched DALI/TensorRT
+            # execution -- a single ragged-per-row UINT8 IMAGE_PATH tensor can't
+            # represent images of different path lengths the way TYPE_STRING did.
+            embeddings = await asyncio.gather(
+                *(
+                    _infer_one_image(image_path=path, crop_box=crop_box)
+                    for path, crop_box in zip(image_paths, crop_boxes)
+                )
+            )
+        else:
+            texts = _decode_string_array(text_input.as_numpy())
+            # Fan the texts out the same way as images, so the dynamic batcher
+            # on mobileclip_s0_text_backend_trt can coalesce concurrent
+            # single-string sub-requests into one batched TensorRT execution.
+            embeddings = await asyncio.gather(*(_infer_one_text(text=text) for text in texts))
+
         stacked = np.stack(embeddings, axis=0).astype(np.float32)
         return pb_utils.InferenceResponse([pb_utils.Tensor(_EMBEDDING_OUTPUT, stacked)])
 
@@ -78,8 +95,29 @@ async def _infer_one_image(image_path, crop_box):
     return embedding[0]
 
 
+async def _infer_one_text(text):
+    infer_req = pb_utils.InferenceRequest(
+        model_name="mobileclip_s0_text_pipeline",
+        requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
+        inputs=[pb_utils.Tensor("text", _text_to_string_tensor(text))],
+        preferred_memory=pb_utils.PreferredMemory(
+            pb_utils.TRITONSERVER_MEMORY_CPU,
+            0,
+        ),
+    )
+    result = await infer_req.async_exec()
+    if result.has_error():
+        raise pb_utils.TritonModelException(result.error().message())
+    embedding = pb_utils.get_output_tensor_by_name(result, _INTERNAL_EMBEDDING_OUTPUT).as_numpy()
+    return embedding[0]
+
+
 def _path_to_bytes(path):
     return np.frombuffer(path.encode("utf-8"), dtype=np.uint8).reshape(1, -1)
+
+
+def _text_to_string_tensor(text):
+    return np.array([[text.encode("utf-8")]], dtype=object)
 
 
 def _scalar_int64(value):
