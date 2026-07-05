@@ -38,6 +38,11 @@ EMBEDDING_INSERTION_BATCH_SIZE = 1024
 
 # Number of annotation crops processed per chunk in embed_annotations.
 ANNOTATION_EMBED_BATCH_SIZE = 2048
+
+# Number of images sent per generator call in embed_images. Keeps individual
+# requests to the embedding backend (e.g. Triton) at a bounded size instead of
+# submitting an entire dataset in one call.
+IMAGE_EMBED_BATCH_SIZE = 512
 # Mapping of sample types to the generator type used for embedding generation.
 _GENERATOR_SAMPLE_TYPE: dict[SampleType, SampleType] = {
     SampleType.IMAGE: SampleType.IMAGE,
@@ -182,8 +187,22 @@ class EmbeddingManager:
         # Extract filepaths in the same order as sample_ids.
         filepaths = [sample_id_to_filepath[sample_id] for sample_id in sample_ids]
 
-        # Generate embeddings for the samples.
-        embeddings = model.embed_images(filepaths=filepaths)
+        # Generate embeddings in chunks so a single generator call never carries
+        # the entire dataset (e.g. avoids oversized Triton requests).
+        embedding_chunks = []
+        with tqdm(total=len(filepaths), desc="Generating embeddings", unit=" images") as progress:
+            for filepath_chunk in batching.batched(
+                items=filepaths, batch_size=IMAGE_EMBED_BATCH_SIZE
+            ):
+                embedding_chunks.append(
+                    model.embed_images(filepaths=filepath_chunk, show_progress=False)
+                )
+                progress.update(len(filepath_chunk))
+        embeddings = (
+            np.concatenate(embedding_chunks, axis=0)
+            if embedding_chunks
+            else np.empty((0, 0), dtype=np.float32)
+        )
 
         _store_embeddings(
             session=session,

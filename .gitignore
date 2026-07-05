@@ -1,3 +1,7 @@
+# lio stuff
+coco_test_normal
+coco_test_trt
+
 # OS
 .DS_Store
 Thumbs.db

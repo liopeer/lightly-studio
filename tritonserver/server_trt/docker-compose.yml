@@ -29,11 +29,15 @@ services:
       - ./model_repository:/models
       - ./checkpoints:/checkpoints
       - /home/lionel/Datasets/coco2017/val2017:/home/lionel/Datasets/coco2017/val2017:ro
+    # Python-backend BLS sub-requests each allocate their own shared-memory
+    # region; the 64MB docker default is exhausted quickly under concurrent
+    # fan-out (see mobileclip_s0/1/model.py's per-image sub-request semaphore).
+    shm_size: '2gb'
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              device_ids: ["0"]
               capabilities: [gpu]
     restart: unless-stopped

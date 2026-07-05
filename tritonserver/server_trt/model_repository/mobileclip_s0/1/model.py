@@ -23,10 +23,17 @@ _INTERNAL_EMBEDDING_OUTPUT = "embeddings"
 # "no crop requested", resolved against the full image inside the DALI graph.
 _NO_CROP = -1
 
+# Caps concurrent BLS sub-requests per model instance. Each in-flight sub-request
+# owns a python-backend shared-memory region, so an unbounded asyncio.gather over
+# a large request (e.g. thousands of image paths in one call) can exhaust
+# /dev/shm regardless of its configured size. 256 matches the TRT/DALI backends'
+# preferred_batch_size, which is the most concurrency that actually helps.
+_MAX_CONCURRENT_SUB_REQUESTS = 256
+
 
 class TritonPythonModel:
     def initialize(self, args):
-        pass  # stateless; sub-models own preprocessing, inference, and normalization
+        self._semaphore = asyncio.Semaphore(_MAX_CONCURRENT_SUB_REQUESTS)
 
     async def execute(self, requests):
         return list(await asyncio.gather(*(self._execute_one(request) for request in requests)))
@@ -53,9 +60,10 @@ class TritonPythonModel:
             # batcher can still coalesce them into a single batched DALI/TensorRT
             # execution -- a single ragged-per-row UINT8 IMAGE_PATH tensor can't
             # represent images of different path lengths the way TYPE_STRING did.
+            # The semaphore bounds how many of these are in flight at once.
             embeddings = await asyncio.gather(
                 *(
-                    _infer_one_image(image_path=path, crop_box=crop_box)
+                    self._infer_one_image(image_path=path, crop_box=crop_box)
                     for path, crop_box in zip(image_paths, crop_boxes)
                 )
             )
@@ -64,52 +72,58 @@ class TritonPythonModel:
             # Fan the texts out the same way as images, so the dynamic batcher
             # on mobileclip_s0_text_backend_trt can coalesce concurrent
             # single-string sub-requests into one batched TensorRT execution.
-            embeddings = await asyncio.gather(*(_infer_one_text(text=text) for text in texts))
+            embeddings = await asyncio.gather(
+                *(self._infer_one_text(text=text) for text in texts)
+            )
 
         stacked = np.stack(embeddings, axis=0).astype(np.float32)
         return pb_utils.InferenceResponse([pb_utils.Tensor(_EMBEDDING_OUTPUT, stacked)])
 
+    async def _infer_one_image(self, image_path, crop_box):
+        x, y, width, height = crop_box if crop_box is not None else (_NO_CROP,) * 4
+        inputs = [
+            pb_utils.Tensor(_IMAGE_PATH_INPUT, _path_to_bytes(image_path)),
+            pb_utils.Tensor(_CROP_X_INPUT, _scalar_int64(x)),
+            pb_utils.Tensor(_CROP_Y_INPUT, _scalar_int64(y)),
+            pb_utils.Tensor(_CROP_WIDTH_INPUT, _scalar_int64(width)),
+            pb_utils.Tensor(_CROP_HEIGHT_INPUT, _scalar_int64(height)),
+        ]
+        infer_req = pb_utils.InferenceRequest(
+            model_name="mobileclip_s0_image_pipeline",
+            requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
+            inputs=inputs,
+            preferred_memory=pb_utils.PreferredMemory(
+                pb_utils.TRITONSERVER_MEMORY_CPU,
+                0,
+            ),
+        )
+        async with self._semaphore:
+            result = await infer_req.async_exec()
+        if result.has_error():
+            raise pb_utils.TritonModelException(result.error().message())
+        embedding = pb_utils.get_output_tensor_by_name(
+            result, _INTERNAL_EMBEDDING_OUTPUT
+        ).as_numpy()
+        return embedding[0]
 
-async def _infer_one_image(image_path, crop_box):
-    x, y, width, height = crop_box if crop_box is not None else (_NO_CROP,) * 4
-    inputs = [
-        pb_utils.Tensor(_IMAGE_PATH_INPUT, _path_to_bytes(image_path)),
-        pb_utils.Tensor(_CROP_X_INPUT, _scalar_int64(x)),
-        pb_utils.Tensor(_CROP_Y_INPUT, _scalar_int64(y)),
-        pb_utils.Tensor(_CROP_WIDTH_INPUT, _scalar_int64(width)),
-        pb_utils.Tensor(_CROP_HEIGHT_INPUT, _scalar_int64(height)),
-    ]
-    infer_req = pb_utils.InferenceRequest(
-        model_name="mobileclip_s0_image_pipeline",
-        requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
-        inputs=inputs,
-        preferred_memory=pb_utils.PreferredMemory(
-            pb_utils.TRITONSERVER_MEMORY_CPU,
-            0,
-        ),
-    )
-    result = await infer_req.async_exec()
-    if result.has_error():
-        raise pb_utils.TritonModelException(result.error().message())
-    embedding = pb_utils.get_output_tensor_by_name(result, _INTERNAL_EMBEDDING_OUTPUT).as_numpy()
-    return embedding[0]
-
-
-async def _infer_one_text(text):
-    infer_req = pb_utils.InferenceRequest(
-        model_name="mobileclip_s0_text_pipeline",
-        requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
-        inputs=[pb_utils.Tensor("text", _text_to_string_tensor(text))],
-        preferred_memory=pb_utils.PreferredMemory(
-            pb_utils.TRITONSERVER_MEMORY_CPU,
-            0,
-        ),
-    )
-    result = await infer_req.async_exec()
-    if result.has_error():
-        raise pb_utils.TritonModelException(result.error().message())
-    embedding = pb_utils.get_output_tensor_by_name(result, _INTERNAL_EMBEDDING_OUTPUT).as_numpy()
-    return embedding[0]
+    async def _infer_one_text(self, text):
+        infer_req = pb_utils.InferenceRequest(
+            model_name="mobileclip_s0_text_pipeline",
+            requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
+            inputs=[pb_utils.Tensor("text", _text_to_string_tensor(text))],
+            preferred_memory=pb_utils.PreferredMemory(
+                pb_utils.TRITONSERVER_MEMORY_CPU,
+                0,
+            ),
+        )
+        async with self._semaphore:
+            result = await infer_req.async_exec()
+        if result.has_error():
+            raise pb_utils.TritonModelException(result.error().message())
+        embedding = pb_utils.get_output_tensor_by_name(
+            result, _INTERNAL_EMBEDDING_OUTPUT
+        ).as_numpy()
+        return embedding[0]
 
 
 def _path_to_bytes(path):
