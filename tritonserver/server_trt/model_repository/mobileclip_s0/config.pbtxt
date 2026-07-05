@@ -42,6 +42,6 @@ output [
 instance_group [
   {
     kind: KIND_CPU
-    count: 1
+    count: 16
   }
 ]
