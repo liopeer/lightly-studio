@@ -6,6 +6,7 @@ from uuid import uuid4
 import numpy as np
 import pytest
 from numpy.typing import NDArray
+from PIL import Image
 
 from lightly_studio.dataset.embedding_generator import ImageCrop
 from lightly_studio.dataset.triton_mobileclip_embedding_generator import (
@@ -92,6 +93,28 @@ def test_embed_images__sends_image_paths(fake_client: FakeTritonClient) -> None:
     input_tensors = cast(list[Any], call["inputs"])
     assert [tensor.name() for tensor in input_tensors] == ["IMAGE_PATH"]
     assert list(input_tensors[0]._get_tensor().shape) == [2]
+
+
+def test_embed_pil_images__sends_png_bytes(fake_client: FakeTritonClient) -> None:
+    generator = TritonMobileCLIPEmbeddingGenerator()
+    cast(Any, generator)._client = fake_client
+    images = [Image.new("RGB", (2, 3), color=(255, 0, 0))]
+
+    embeddings = generator.embed_pil_images(images=images)
+
+    assert embeddings.shape == (1, EMBEDDING_DIMENSION)
+    input_tensors = cast(list[Any], fake_client.calls[-1]["inputs"])
+    assert [tensor.name() for tensor in input_tensors] == ["IMAGE_BYTES"]
+    assert input_tensors[0]._get_tensor().shape == [1]
+    assert input_tensors[0]._raw_content[4:8] == b"\x89PNG"
+
+
+def test_embed_pil_images__empty_input_returns_empty_array() -> None:
+    generator = TritonMobileCLIPEmbeddingGenerator.__new__(TritonMobileCLIPEmbeddingGenerator)
+
+    embeddings = generator.embed_pil_images(images=[])
+
+    assert embeddings.shape == (0, EMBEDDING_DIMENSION)
 
 
 def test_embed_text__sends_text(fake_client: FakeTritonClient) -> None:

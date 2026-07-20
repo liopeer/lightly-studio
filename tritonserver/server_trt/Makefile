@@ -20,6 +20,8 @@ TEXT_ONNX := $(TEXT_ENGINE_DIR)/model.onnx
 TRITON_IMAGE := nvcr.io/nvidia/tritonserver:25.03-py3
 DALI_DIR := model_repository/mobileclip_s0_image_preprocessing/1
 DALI_PIPELINE := $(DALI_DIR)/model.dali
+IMAGE_BYTES_DALI_DIR := model_repository/mobileclip_s0_image_bytes_preprocessing/1
+IMAGE_BYTES_DALI_PIPELINE := $(IMAGE_BYTES_DALI_DIR)/model.dali
 DALI_MAX_BATCH_SIZE := 256
 
 .PHONY: download plan dali up down logs clean
@@ -73,11 +75,20 @@ $(DALI_PIPELINE): dali_pipeline.py
 		-v $(CURDIR):/workspace \
 		-w /workspace \
 		$(TRITON_IMAGE) \
-		python3 dali_pipeline.py --out $(DALI_PIPELINE) --max-batch-size $(DALI_MAX_BATCH_SIZE)
+		python3 dali_pipeline.py --out $(DALI_PIPELINE) --max-batch-size $(DALI_MAX_BATCH_SIZE) --input-kind path
 
-dali: $(DALI_PIPELINE)
+$(IMAGE_BYTES_DALI_PIPELINE): dali_pipeline.py
+	mkdir -p $(IMAGE_BYTES_DALI_DIR)
+	docker run --rm --gpus all \
+		--user $(shell id -u):$(shell id -g) \
+		-v $(CURDIR):/workspace \
+		-w /workspace \
+		$(TRITON_IMAGE) \
+		python3 dali_pipeline.py --out $(IMAGE_BYTES_DALI_PIPELINE) --max-batch-size $(DALI_MAX_BATCH_SIZE) --input-kind bytes
 
-up: $(PLAN) $(TEXT_PLAN) $(DALI_PIPELINE)
+dali: $(DALI_PIPELINE) $(IMAGE_BYTES_DALI_PIPELINE)
+
+up: $(PLAN) $(TEXT_PLAN) $(DALI_PIPELINE) $(IMAGE_BYTES_DALI_PIPELINE)
 	docker compose up -d --build
 
 down:
@@ -87,4 +98,4 @@ logs:
 	docker compose logs -f triton-server-trt
 
 clean:
-	rm -f $(PLAN) $(ONNX) $(TEXT_PLAN) $(TEXT_ONNX) $(DALI_PIPELINE)
+	rm -f $(PLAN) $(ONNX) $(TEXT_PLAN) $(TEXT_ONNX) $(DALI_PIPELINE) $(IMAGE_BYTES_DALI_PIPELINE)

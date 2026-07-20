@@ -9,6 +9,7 @@ import numpy as np
 import triton_python_backend_utils as pb_utils
 
 _IMAGE_PATH_INPUT = "IMAGE_PATH"
+_IMAGE_BYTES_INPUT = "IMAGE_BYTES"
 _TEXT_INPUT = "TEXT"
 _CROP_X_INPUT = "CROP_X"
 _CROP_Y_INPUT = "CROP_Y"
@@ -46,20 +47,22 @@ class TritonPythonModel:
         return list(await asyncio.gather(*(self._execute_one(request) for request in requests)))
 
     async def _execute_one(self, request):
-        image_input = pb_utils.get_input_tensor_by_name(request, _IMAGE_PATH_INPUT)
+        image_path_input = pb_utils.get_input_tensor_by_name(request, _IMAGE_PATH_INPUT)
+        image_bytes_input = pb_utils.get_input_tensor_by_name(request, _IMAGE_BYTES_INPUT)
         text_input = pb_utils.get_input_tensor_by_name(request, _TEXT_INPUT)
 
-        if image_input is not None and text_input is not None:
+        primary_inputs = (image_path_input, image_bytes_input, text_input)
+        if sum(input_tensor is not None for input_tensor in primary_inputs) > 1:
             raise pb_utils.TritonModelException(
-                f"Provide either {_IMAGE_PATH_INPUT} or {_TEXT_INPUT}, not both."
+                f"Provide exactly one of {_IMAGE_PATH_INPUT}, {_IMAGE_BYTES_INPUT}, or {_TEXT_INPUT}."
             )
-        if image_input is None and text_input is None:
+        if not any(input_tensor is not None for input_tensor in primary_inputs):
             raise pb_utils.TritonModelException(
-                f"Provide {_IMAGE_PATH_INPUT} or {_TEXT_INPUT}."
+                f"Provide {_IMAGE_PATH_INPUT}, {_IMAGE_BYTES_INPUT}, or {_TEXT_INPUT}."
             )
 
-        if image_input is not None:
-            image_paths = _decode_string_array(image_input.as_numpy())
+        if image_path_input is not None:
+            image_paths = _decode_string_array(image_path_input.as_numpy())
             crop_boxes = _get_crop_boxes(request=request, count=len(image_paths))
 
             # Fan the images in this request out as concurrent BLS sub-requests
@@ -74,7 +77,14 @@ class TritonPythonModel:
                     for path, crop_box in zip(image_paths, crop_boxes)
                 )
             )
+        elif image_bytes_input is not None:
+            _raise_if_crop_inputs_present(request=request)
+            image_bytes = _get_bytes_values(image_bytes_input.as_numpy())
+            embeddings = await asyncio.gather(
+                *(self._infer_one_image_bytes(value=value) for value in image_bytes)
+            )
         else:
+            _raise_if_crop_inputs_present(request=request)
             texts = _decode_string_array(text_input.as_numpy())
             # Fan the texts out the same way as images, so the dynamic batcher
             # on mobileclip_s0_text_backend_trt can coalesce concurrent
@@ -113,6 +123,25 @@ class TritonPythonModel:
         ).as_numpy()
         return embedding[0]
 
+    async def _infer_one_image_bytes(self, value):
+        infer_req = pb_utils.InferenceRequest(
+            model_name="mobileclip_s0_image_bytes_pipeline",
+            requested_output_names=[_INTERNAL_EMBEDDING_OUTPUT],
+            inputs=[pb_utils.Tensor(_IMAGE_BYTES_INPUT, _bytes_to_tensor(value))],
+            preferred_memory=pb_utils.PreferredMemory(
+                pb_utils.TRITONSERVER_MEMORY_CPU,
+                0,
+            ),
+        )
+        async with self._semaphore:
+            result = await infer_req.async_exec()
+        if result.has_error():
+            raise pb_utils.TritonModelException(result.error().message())
+        embedding = pb_utils.get_output_tensor_by_name(
+            result, _INTERNAL_EMBEDDING_OUTPUT
+        ).as_numpy()
+        return embedding[0]
+
     async def _infer_one_text(self, text):
         infer_req = pb_utils.InferenceRequest(
             model_name="mobileclip_s0_text_pipeline",
@@ -137,6 +166,10 @@ def _path_to_bytes(path):
     return np.frombuffer(path.encode("utf-8"), dtype=np.uint8).reshape(1, -1)
 
 
+def _bytes_to_tensor(value):
+    return np.frombuffer(value, dtype=np.uint8).reshape(1, -1)
+
+
 def _text_to_string_tensor(text):
     return np.array([[text.encode("utf-8")]], dtype=object)
 
@@ -148,6 +181,10 @@ def _scalar_int64(value):
 def _decode_string_array(values):
     flat = np.asarray(values).reshape(-1)
     return [value.decode("utf-8") if isinstance(value, bytes) else str(value) for value in flat]
+
+
+def _get_bytes_values(values):
+    return [bytes(value) for value in np.asarray(values).reshape(-1)]
 
 
 def _get_model_parameter_int(args, name, default):
@@ -179,3 +216,11 @@ def _get_crop_boxes(request, count):
     return [
         (int(xs[i]), int(ys[i]), int(widths[i]), int(heights[i])) for i in range(count)
     ]
+
+
+def _raise_if_crop_inputs_present(request):
+    crop_names = (_CROP_X_INPUT, _CROP_Y_INPUT, _CROP_WIDTH_INPUT, _CROP_HEIGHT_INPUT)
+    if any(pb_utils.get_input_tensor_by_name(request, name) is not None for name in crop_names):
+        raise pb_utils.TritonModelException(
+            f"Crop inputs are only supported with {_IMAGE_PATH_INPUT}."
+        )

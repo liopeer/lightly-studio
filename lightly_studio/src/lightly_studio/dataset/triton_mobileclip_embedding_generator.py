@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from io import BytesIO
 from uuid import UUID
 
 import numpy as np
 import tritonclient.grpc as grpcclient
 import xxhash
 from numpy.typing import NDArray
+from PIL import Image
 
 from lightly_studio.dataset import env
 from lightly_studio.models.embedding_model import EmbeddingModelCreate
@@ -19,6 +21,7 @@ SUPPORTED_MODEL_NAMES = {DEFAULT_MODEL_NAME}
 EMBEDDING_DIMENSION = 512
 
 _IMAGE_PATH_INPUT = "IMAGE_PATH"
+_IMAGE_BYTES_INPUT = "IMAGE_BYTES"
 _TEXT_INPUT = "TEXT"
 _CROP_X_INPUT = "CROP_X"
 _CROP_Y_INPUT = "CROP_Y"
@@ -108,6 +111,29 @@ class TritonMobileCLIPEmbeddingGenerator(ImageEmbeddingGenerator):
         ]
         return self._infer_embeddings(inputs=inputs, expected_count=len(filepaths))
 
+    def embed_pil_images(
+        self, images: list[Image.Image], show_progress: bool = True
+    ) -> NDArray[np.float32]:
+        """Embed in-memory PIL images with Triton MobileCLIP.
+
+        Images are serialized losslessly as PNG files and sent to Triton, where
+        the byte-image preprocessing pipeline decodes and normalizes them.
+
+        Args:
+            images: In-memory images to embed.
+            show_progress: Whether to show a progress bar during embedding.
+
+        Returns:
+            A numpy array representing the generated embeddings in the same order
+            as the input images.
+        """
+        _ = show_progress
+        if not images:
+            return np.empty((0, EMBEDDING_DIMENSION), dtype=np.float32)
+
+        inputs = [_image_bytes_input(images=images)]
+        return self._infer_embeddings(inputs=inputs, expected_count=len(images))
+
     def embed_image_crops(
         self, image_crops: list[ImageCrop], show_progress: bool = True
     ) -> NDArray[np.float32]:
@@ -173,6 +199,19 @@ def _bytes_input(name: str, values: list[str]) -> grpcclient.InferInput:
     infer_input = grpcclient.InferInput(name, [len(encoded_values)], "BYTES")
     infer_input.set_data_from_numpy(np.asarray(encoded_values, dtype=object))
     return infer_input
+
+
+def _image_bytes_input(images: list[Image.Image]) -> grpcclient.InferInput:
+    encoded_images = [_encode_image_as_png(image=image) for image in images]
+    infer_input = grpcclient.InferInput(_IMAGE_BYTES_INPUT, [len(encoded_images)], "BYTES")
+    infer_input.set_data_from_numpy(np.asarray(encoded_images, dtype=object))
+    return infer_input
+
+
+def _encode_image_as_png(image: Image.Image) -> bytes:
+    image_buffer = BytesIO()
+    image.convert("RGB").save(image_buffer, format="PNG")
+    return image_buffer.getvalue()
 
 
 def _int64_input(name: str, values: list[int]) -> grpcclient.InferInput:

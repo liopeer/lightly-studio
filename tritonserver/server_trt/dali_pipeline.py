@@ -4,7 +4,7 @@
 #
 # GPU preprocessing pipeline for mobileclip_s0_image_preprocessing, run through
 # NVIDIA DALI instead of the CPU/PIL Python backend. Reproduces:
-#   IMAGE_PATH -> optional crop -> resize-shorter-side(256) -> center-crop(256)
+#   IMAGE_PATH or IMAGE_BYTES -> optional crop -> resize-shorter-side(256) -> center-crop(256)
 #   -> /255 -> CHW float32
 # Serialized to model.dali via `make dali`; the Triton DALI backend loads the
 # serialized plan directly, so nvidia-dali is only needed at build time here
@@ -20,15 +20,29 @@ MAX_BATCH_SIZE = 64
 
 
 @pipeline_def
-def mobileclip_preprocessing_pipeline():
-    paths = fn.external_source(name="IMAGE_PATH", dtype=types.UINT8, ndim=1)
-    crop_x = fn.external_source(name="CROP_X", dtype=types.INT64, ndim=1)
-    crop_y = fn.external_source(name="CROP_Y", dtype=types.INT64, ndim=1)
-    crop_w = fn.external_source(name="CROP_WIDTH", dtype=types.INT64, ndim=1)
-    crop_h = fn.external_source(name="CROP_HEIGHT", dtype=types.INT64, ndim=1)
+def mobileclip_preprocessing_pipeline(input_kind: str):
+    if input_kind == "path":
+        paths = fn.external_source(name="IMAGE_PATH", dtype=types.UINT8, ndim=1)
+        encoded = fn.io.file.read(paths)
+        crop_x = fn.external_source(name="CROP_X", dtype=types.INT64, ndim=1)
+        crop_y = fn.external_source(name="CROP_Y", dtype=types.INT64, ndim=1)
+        crop_w = fn.external_source(name="CROP_WIDTH", dtype=types.INT64, ndim=1)
+        crop_h = fn.external_source(name="CROP_HEIGHT", dtype=types.INT64, ndim=1)
+    else:
+        encoded = fn.external_source(name="IMAGE_BYTES", dtype=types.UINT8, ndim=1)
 
-    encoded = fn.io.file.read(paths)
     image = fn.decoders.image(encoded, device="mixed", output_type=types.RGB)
+
+    if input_kind == "bytes":
+        resized = fn.resize(image, resize_shorter=IMAGE_SIZE, interp_type=types.INTERP_LINEAR)
+        return fn.crop_mirror_normalize(
+            resized,
+            crop=(IMAGE_SIZE, IMAGE_SIZE),
+            mean=0.0,
+            std=255.0,
+            output_layout="CHW",
+            dtype=types.FLOAT,
+        )
 
     # -1 in CROP_* means "no crop requested" -> fall back to the full image,
     # resolved per-sample via cheap header-only shape peeking + arithmetic
@@ -70,12 +84,14 @@ def main() -> None:
     parser.add_argument("--max-batch-size", type=int, default=MAX_BATCH_SIZE)
     parser.add_argument("--num-threads", type=int, default=4)
     parser.add_argument("--device-id", type=int, default=0)
+    parser.add_argument("--input-kind", choices=("path", "bytes"), required=True)
     args = parser.parse_args()
 
     pipe = mobileclip_preprocessing_pipeline(
         batch_size=args.max_batch_size,
         num_threads=args.num_threads,
         device_id=args.device_id,
+        input_kind=args.input_kind,
     )
     pipe.serialize(filename=args.out)
 

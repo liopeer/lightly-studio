@@ -7,8 +7,9 @@ encoders. It keeps the existing `server/` setup unchanged and exposes a
 Pipelines:
 
 ```text
-IMAGE_PATH -> GPU preprocessing (DALI: decode, crop, resize, normalize) -> TensorRT FP16 image encoder with L2 norm -> EMBEDDING
-TEXT       -> CPU tokenization (Python backend)                          -> TensorRT FP16 text encoder with L2 norm  -> EMBEDDING
+IMAGE_PATH  -> GPU preprocessing (DALI: decode, crop, resize, normalize) -> TensorRT FP16 image encoder with L2 norm -> EMBEDDING
+IMAGE_BYTES -> GPU preprocessing (DALI: decode, resize, normalize)       -> TensorRT FP16 image encoder with L2 norm -> EMBEDDING
+TEXT        -> CPU tokenization (Python backend)                          -> TensorRT FP16 text encoder with L2 norm  -> EMBEDDING
 ```
 
 Image decode, cropping, resizing, and normalization all run on GPU via
@@ -49,9 +50,10 @@ metrics so it can run alongside the original server.
 The public model interface is:
 
 - Model: `mobileclip_s0`
-- Input: either `IMAGE_PATH` or `TEXT` (exactly one of the two)
+- Input: exactly one of `IMAGE_PATH`, `IMAGE_BYTES`, or `TEXT`
 - Optional crop inputs (with `IMAGE_PATH` only): `CROP_X`, `CROP_Y`, `CROP_WIDTH`, `CROP_HEIGHT`
 - Output: `EMBEDDING`
 
 Image files must be visible inside the container at the same path passed to
 `IMAGE_PATH`. Add read-only dataset mounts to `docker-compose.yml` as needed.
+`IMAGE_BYTES` accepts compressed image bytes and does not require a dataset mount.
