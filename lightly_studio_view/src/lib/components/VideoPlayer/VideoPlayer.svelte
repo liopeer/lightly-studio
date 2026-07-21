@@ -75,6 +75,9 @@
 
         /** Called with the new span when an event edge finishes being edited. */
         onEventResize?: (event: VideoEvent, startTimeS: number, endTimeS: number) => void;
+
+        /** Called with a default span when the user adds a new event. */
+        onEventAdd?: (startTimeS: number, endTimeS: number) => void;
     }
 
     let {
@@ -86,7 +89,8 @@
         events = [],
         durationS,
         editableEvents = false,
-        onEventResize
+        onEventResize,
+        onEventAdd
     }: VideoPlayerProps = $props();
 
     const defaultVideoProps: HTMLVideoAttributes = {
@@ -210,7 +214,7 @@
         onToggleMute={playback.toggleMute}
         onToggleFullscreen={playback.toggleFullscreen}
     >
-        {#if showEvents}
+        {#if showEvents || editableEvents}
             <VideoEventTimeline
                 class="w-full"
                 {events}
@@ -219,6 +223,7 @@
                 onSeek={playback.seekTo}
                 editable={editableEvents}
                 onResize={onEventResize}
+                onAddEvent={onEventAdd}
                 showHeader={false}
             />
         {/if}
