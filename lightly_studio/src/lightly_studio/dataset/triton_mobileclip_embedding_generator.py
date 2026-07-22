@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID
 
 import numpy as np
-import tritonclient.grpc as grpcclient
+import tritonclient.grpc as grpcclient  # type: ignore[import-untyped]
 import xxhash
 from numpy.typing import NDArray
 from tqdm import tqdm

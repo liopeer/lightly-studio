@@ -137,19 +137,6 @@ ignore_missing_imports = true
 module = "sqlalchemy_utils.*"
 ignore_missing_imports = true
 
-[[tool.mypy.overrides]]
-module = ["s3fs", "s3fs.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "tritonclient.*"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["torch", "torch.*", "torchvision.*"]
-ignore_missing_imports = true
-
-
 [tool.pytest.ini_options]
 # Make pytest discover all files in the tests directory. This is useful for showing
 # detailed assertion errors outside of the test file, for example when using a helper
