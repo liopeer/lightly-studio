@@ -598,21 +598,27 @@ def _load_image_embedding_generator_from_env() -> ImageEmbeddingGenerator | None
 
 def _load_torch_embedding_generator(model_name: str) -> EmbeddingGenerator:
     from lightly_studio.dataset.mobileclip_embedding_generator import (  # noqa: PLC0415
-        SUPPORTED_MODEL_NAMES,
+        SUPPORTED_MODEL_NAMES as SUPPORTED_MOBILECLIP_MODEL_NAMES,
+    )
+    from lightly_studio.dataset.mobileclip_embedding_generator import (  # noqa: PLC0415
         MobileCLIPEmbeddingGenerator,
     )
     from lightly_studio.dataset.perception_encoder_embedding_generator import (  # noqa: PLC0415
         PerceptionEncoderEmbeddingGenerator,
     )
-    from lightly_studio.vendor.perception_encoder.vision_encoder import config  # noqa: PLC0415
+    from lightly_studio.vendor.perception_encoder.vision_encoder.config import (  # noqa: PLC0415
+        DOWNLOADABLE_MODEL_URL as SUPPORTED_PERCEPTION_ENCODER_MODEL_NAMES,
+    )
 
-    if model_name in SUPPORTED_MODEL_NAMES:
+    if model_name in SUPPORTED_MOBILECLIP_MODEL_NAMES:
         logger.info("Using %s MobileCLIP embedding generator.", model_name)
         return MobileCLIPEmbeddingGenerator(model_name=model_name)
-    if model_name in config.DOWNLOADABLE_MODEL_URL:
+    if model_name in SUPPORTED_PERCEPTION_ENCODER_MODEL_NAMES:
         logger.info("Using %s Perception Encoder embedding generator.", model_name)
         return PerceptionEncoderEmbeddingGenerator(model_name=model_name)
-    supported_names = sorted(SUPPORTED_MODEL_NAMES | set(config.DOWNLOADABLE_MODEL_URL))
+    supported_names = sorted(
+        SUPPORTED_MOBILECLIP_MODEL_NAMES | set(SUPPORTED_PERCEPTION_ENCODER_MODEL_NAMES)
+    )
     raise ValueError(
         f"Unsupported torch embedding model '{model_name}'. Supported models: "
         f"{', '.join(supported_names)}."
