@@ -19,14 +19,18 @@ from .image_embedding import ImageEmbeddingResult
 
 # Maximum number of inputs sent in one Triton inference request.
 DEFAULT_REQUEST_BATCH_SIZE = 512
-_MIN_EMBEDDING_OUTPUT_RANK = 2
-_IMAGE_PATH_INPUT = "IMAGE_PATH"
-_TEXT_INPUT = "TEXT"
-_CROP_X_INPUT = "CROP_X"
-_CROP_Y_INPUT = "CROP_Y"
-_CROP_WIDTH_INPUT = "CROP_WIDTH"
-_CROP_HEIGHT_INPUT = "CROP_HEIGHT"
-_EMBEDDING_OUTPUT = "EMBEDDING"
+
+
+class _TritonNames:
+    """Names in the Triton model interface."""
+
+    IMAGE_PATH = "IMAGE_PATH"
+    TEXT = "TEXT"
+    CROP_X = "CROP_X"
+    CROP_Y = "CROP_Y"
+    CROP_WIDTH = "CROP_WIDTH"
+    CROP_HEIGHT = "CROP_HEIGHT"
+    EMBEDDING = "EMBEDDING"
 
 
 class TritonEmbeddingGenerator(ImageEmbeddingGenerator):
@@ -57,7 +61,7 @@ class TritonEmbeddingGenerator(ImageEmbeddingGenerator):
     def embed_text(self, text: str) -> list[float]:
         """Embed a text query."""
         embeddings = self._infer_embeddings(
-            inputs=[_bytes_input(name=_TEXT_INPUT, values=[text])], expected_count=1
+            inputs=[_bytes_input(name=_TritonNames.TEXT, values=[text])], expected_count=1
         )
         result: list[float] = embeddings[0].tolist()
         return result
@@ -68,7 +72,7 @@ class TritonEmbeddingGenerator(ImageEmbeddingGenerator):
         """Embed image paths, forwarding remote URLs unchanged to Triton."""
         embeddings = self._embed_in_chunks(
             values=filepaths,
-            make_inputs=lambda paths: [_bytes_input(name=_IMAGE_PATH_INPUT, values=paths)],
+            make_inputs=lambda paths: [_bytes_input(name=_TritonNames.IMAGE_PATH, values=paths)],
             show_progress=show_progress,
             progress_description="Generating embeddings",
             progress_unit=" images",
@@ -125,11 +129,11 @@ class TritonEmbeddingGenerator(ImageEmbeddingGenerator):
         result = self._client.infer(
             model_name=self._model_name,
             inputs=inputs,
-            outputs=[grpcclient.InferRequestedOutput(_EMBEDDING_OUTPUT)],
+            outputs=[grpcclient.InferRequestedOutput(_TritonNames.EMBEDDING)],
         )
-        output = result.as_numpy(_EMBEDDING_OUTPUT)
+        output = result.as_numpy(_TritonNames.EMBEDDING)
         if output is None:
-            raise ValueError(f"Triton response is missing output '{_EMBEDDING_OUTPUT}'.")
+            raise ValueError(f"Triton response is missing output '{_TritonNames.EMBEDDING}'.")
 
         embeddings = np.asarray(output, dtype=np.float32)
         expected_shape = (expected_count, self._embedding_dimension)
@@ -150,11 +154,11 @@ def _bytes_input(name: str, values: Sequence[str]) -> grpcclient.InferInput:
 
 def _crop_inputs(image_crops: Sequence[ImageCrop]) -> list[grpcclient.InferInput]:
     return [
-        _bytes_input(name=_IMAGE_PATH_INPUT, values=[crop.filepath for crop in image_crops]),
-        _int64_input(name=_CROP_X_INPUT, values=[crop.x for crop in image_crops]),
-        _int64_input(name=_CROP_Y_INPUT, values=[crop.y for crop in image_crops]),
-        _int64_input(name=_CROP_WIDTH_INPUT, values=[crop.width for crop in image_crops]),
-        _int64_input(name=_CROP_HEIGHT_INPUT, values=[crop.height for crop in image_crops]),
+        _bytes_input(name=_TritonNames.IMAGE_PATH, values=[crop.filepath for crop in image_crops]),
+        _int64_input(name=_TritonNames.CROP_X, values=[crop.x for crop in image_crops]),
+        _int64_input(name=_TritonNames.CROP_Y, values=[crop.y for crop in image_crops]),
+        _int64_input(name=_TritonNames.CROP_WIDTH, values=[crop.width for crop in image_crops]),
+        _int64_input(name=_TritonNames.CROP_HEIGHT, values=[crop.height for crop in image_crops]),
     ]
 
 
@@ -168,13 +172,13 @@ def _get_embedding_dimension(metadata: Any) -> int:
     outputs = metadata["outputs"] if isinstance(metadata, dict) else metadata.outputs
     for output in outputs:
         name = output["name"] if isinstance(output, dict) else output.name
-        if name != _EMBEDDING_OUTPUT:
+        if name != _TritonNames.EMBEDDING:
             continue
         shape = output["shape"] if isinstance(output, dict) else output.shape
-        if len(shape) < _MIN_EMBEDDING_OUTPUT_RANK or shape[-1] <= 0:
-            raise ValueError(f"Triton output '{_EMBEDDING_OUTPUT}' has invalid shape {shape}.")
+        if shape[-1] <= 0:
+            raise ValueError(f"Triton output '{_TritonNames.EMBEDDING}' has invalid shape {shape}.")
         return int(shape[-1])
-    raise ValueError(f"Triton model does not expose output '{_EMBEDDING_OUTPUT}'.")
+    raise ValueError(f"Triton model does not expose output '{_TritonNames.EMBEDDING}'.")
 
 
 def _get_model_hash(url: str, model_name: str) -> str:
