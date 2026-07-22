@@ -10,6 +10,7 @@ import numpy as np
 import tritonclient.grpc as grpcclient
 import xxhash
 from numpy.typing import NDArray
+from tqdm import tqdm
 
 from lightly_studio.models.embedding_model import EmbeddingModelCreate
 
@@ -65,10 +66,12 @@ class TritonEmbeddingGenerator(ImageEmbeddingGenerator):
         self, filepaths: list[str], show_progress: bool = True
     ) -> ImageEmbeddingResult:
         """Embed image paths, forwarding remote URLs unchanged to Triton."""
-        _ = show_progress
         embeddings = self._embed_in_chunks(
             values=filepaths,
             make_inputs=lambda paths: [_bytes_input(name=_IMAGE_PATH_INPUT, values=paths)],
+            show_progress=show_progress,
+            progress_description="Generating embeddings",
+            progress_unit=" images",
         )
         return ImageEmbeddingResult(
             embeddings=embeddings,
@@ -79,27 +82,41 @@ class TritonEmbeddingGenerator(ImageEmbeddingGenerator):
         self, image_crops: list[ImageCrop], show_progress: bool = True
     ) -> NDArray[np.float32]:
         """Embed image crops represented by their source paths and coordinates."""
-        _ = show_progress
         return self._embed_in_chunks(
             values=image_crops,
             make_inputs=_crop_inputs,
+            show_progress=show_progress,
+            progress_description="Generating crop embeddings",
+            progress_unit=" crops",
         )
 
     def _embed_in_chunks(
         self,
         values: Sequence[str] | Sequence[ImageCrop],
         make_inputs: Any,
+        show_progress: bool,
+        progress_description: str,
+        progress_unit: str,
     ) -> NDArray[np.float32]:
         if not values:
             return np.empty((0, self._embedding_dimension), dtype=np.float32)
 
-        chunks = [
-            self._infer_embeddings(
-                inputs=make_inputs(values[index : index + DEFAULT_REQUEST_BATCH_SIZE]),
-                expected_count=len(values[index : index + DEFAULT_REQUEST_BATCH_SIZE]),
-            )
-            for index in range(0, len(values), DEFAULT_REQUEST_BATCH_SIZE)
-        ]
+        chunks = []
+        with tqdm(
+            total=len(values),
+            desc=progress_description,
+            unit=progress_unit,
+            disable=not show_progress,
+        ) as progress_bar:
+            for index in range(0, len(values), DEFAULT_REQUEST_BATCH_SIZE):
+                chunk = values[index : index + DEFAULT_REQUEST_BATCH_SIZE]
+                chunks.append(
+                    self._infer_embeddings(
+                        inputs=make_inputs(chunk),
+                        expected_count=len(chunk),
+                    )
+                )
+                progress_bar.update(len(chunk))
         return np.concatenate(chunks, axis=0)
 
     def _infer_embeddings(
