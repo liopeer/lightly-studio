@@ -82,7 +82,7 @@ class CustomEmbeddingGenerator(ls.ImageEmbeddingGenerator):
         """Embed a text query into the same space as the images (for text search)."""
         tokenized = self._tokenizer([text]).to(self._device)
         with torch.no_grad():
-            embedding = self._model.encode_text(tokenized)[0]
+            embedding = self._model.encode_text(tokenized)[0]  # type: ignore[operator]
             embedding_list: list[float] = embedding.cpu().numpy().flatten().tolist()
         return embedding_list
 
@@ -124,7 +124,7 @@ class CustomEmbeddingGenerator(ls.ImageEmbeddingGenerator):
             device=self._device,
             preprocess=self._preprocess,
             encode_batch=lambda images_tensor: (
-                self._model.encode_image(images_tensor).cpu().numpy()
+                self._model.encode_image(images_tensor).cpu().numpy()  # type: ignore[operator]
             ),
         )
 

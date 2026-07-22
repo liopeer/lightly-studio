@@ -41,6 +41,51 @@ from tests.helpers_resolvers import (
 from tests.resolvers.video.helpers import VideoStub, create_videos
 
 
+@pytest.mark.parametrize(
+    "model_name",
+    ["mobileclip_s0", "mobileclip_s1", "mobileclip_s2", "mobileclip_b"],
+)
+def test_load_torch_embedding_generator__mobileclip_variants(
+    mocker: MockerFixture, model_name: str
+) -> None:
+    expected_generator = object()
+    create_generator = mocker.patch(
+        "lightly_studio.dataset.mobileclip_embedding_generator.MobileCLIPEmbeddingGenerator",
+        return_value=expected_generator,
+    )
+
+    generator = embedding_manager._load_torch_embedding_generator(model_name=model_name)
+
+    assert generator is expected_generator
+    create_generator.assert_called_once_with(model_name=model_name)
+
+
+@pytest.mark.parametrize(
+    "model_name",
+    [
+        "PE-Core-T16-384",
+        "PE-Core-S16-384",
+        "PE-Core-B16-224",
+        "PE-Core-L14-336",
+        "PE-Core-G14-448",
+    ],
+)
+def test_load_torch_embedding_generator__perception_encoder_variants(
+    mocker: MockerFixture, model_name: str
+) -> None:
+    expected_generator = object()
+    create_generator = mocker.patch(
+        "lightly_studio.dataset.perception_encoder_embedding_generator."
+        "PerceptionEncoderEmbeddingGenerator",
+        return_value=expected_generator,
+    )
+
+    generator = embedding_manager._load_torch_embedding_generator(model_name=model_name)
+
+    assert generator is expected_generator
+    create_generator.assert_called_once_with(model_name=model_name)
+
+
 def test_register_embedding_model(
     db_session: Session,
     collection: CollectionTable,

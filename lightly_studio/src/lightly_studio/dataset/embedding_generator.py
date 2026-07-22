@@ -103,6 +103,11 @@ class ImageEmbeddingGenerator(EmbeddingGenerator, Protocol):
         """
         ...
 
+
+@runtime_checkable
+class PILImageEmbeddingGenerator(ImageEmbeddingGenerator, Protocol):
+    """Protocol for image generators that support in-memory PIL images."""
+
     def embed_pil_images(
         self, images: list[Image.Image], show_progress: bool = True
     ) -> NDArray[np.float32]:

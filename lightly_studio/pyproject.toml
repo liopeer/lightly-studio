@@ -42,6 +42,9 @@ dependencies = [
     "scikit-learn==1.7.2; python_version >= '3.10'",
     "python-multipart>=0.0.20",
     "environs<12.0.0",
+    "open-clip-torch>=2.20.0",
+    "torch>=2.6.0",
+    "torchvision>=0.20.0",
     # Public Mundig versions are found at https://pypi.org/project/lightly-mundig/
     # Internal Mundig versions are found at
     # https://console.cloud.google.com/artifacts/python/boris-250909/europe-west3/lightly-pypi/lightly-mundig
