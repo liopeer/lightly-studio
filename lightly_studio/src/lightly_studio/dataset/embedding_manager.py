@@ -12,6 +12,7 @@ from PIL import Image
 from sqlmodel import Session
 from tqdm import tqdm
 
+from lightly_studio.core.file_outcome_report import AllInputFilesFailedError
 from lightly_studio.dataset import env
 from lightly_studio.dataset.embedding_generator import (
     EmbeddingGenerator,
@@ -244,15 +245,27 @@ class EmbeddingManager:
 
         # Generate embeddings in chunks so a single generator call never carries
         # the entire dataset (e.g. avoids oversized Triton requests).
-        embedding_chunks = []
+        embedding_chunks: list[NDArray[np.float32]] = []
+        kept_sample_ids: list[UUID] = []
+        all_files_failed_error: AllInputFilesFailedError | None = None
         with tqdm(total=len(filepaths), desc="Generating embeddings", unit=" images") as progress:
-            for filepath_chunk in batching.batched(
-                items=filepaths, batch_size=IMAGE_EMBED_BATCH_SIZE
-            ):
-                embedding_chunks.append(
-                    model.embed_images(filepaths=filepath_chunk, show_progress=False)
+            for start_index in range(0, len(filepaths), IMAGE_EMBED_BATCH_SIZE):
+                filepath_chunk = filepaths[start_index : start_index + IMAGE_EMBED_BATCH_SIZE]
+                try:
+                    result = model.embed_images(filepaths=filepath_chunk, show_progress=False)
+                except AllInputFilesFailedError as error:
+                    all_files_failed_error = error
+                    progress.update(len(filepath_chunk))
+                    continue
+                embedding_chunks.append(result.embeddings)
+                kept_sample_ids.extend(
+                    sample_ids[start_index + index] for index in result.kept_indices
                 )
                 progress.update(len(filepath_chunk))
+
+        if not embedding_chunks and all_files_failed_error is not None:
+            raise all_files_failed_error
+
         embeddings = (
             np.concatenate(embedding_chunks, axis=0)
             if embedding_chunks
@@ -262,7 +275,7 @@ class EmbeddingManager:
         _store_embeddings(
             session=session,
             model_id=model_id,
-            sample_ids=sample_ids,
+            sample_ids=kept_sample_ids,
             embeddings=embeddings,
         )
 
@@ -354,11 +367,11 @@ class EmbeddingManager:
         model = self._get_image_model(model_id)
 
         # Generate embedding for the image without progress bar.
-        embeddings = model.embed_images(filepaths=[filepath], show_progress=False)
+        result = model.embed_images(filepaths=[filepath], show_progress=False)
 
         # Return the single embedding as a list of floats.
-        result: list[float] = embeddings[0].tolist()
-        return result
+        embedding: list[float] = result.embeddings[0].tolist()
+        return embedding
 
     def embed_videos(
         self,

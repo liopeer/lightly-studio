@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add a selector for the numeric metadata histogram bin count.
 - Introduce button to see expanded distribution for numeric metadata values.
 - Add metadata filter chips to the left sidebar
+- Display classification annotations in the annotations grid.
 
 
 ### Changed
@@ -26,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 ### Fixed
+
+- Class distribution bar chart: tooltip was clipped when hovering a chart with a single class.
+- Long tags shown in the left side menu are truncated.
 
 ### Security
 

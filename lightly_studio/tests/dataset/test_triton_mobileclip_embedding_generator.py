@@ -85,9 +85,10 @@ def test_embed_images__sends_image_paths(fake_client: FakeTritonClient) -> None:
     generator = TritonMobileCLIPEmbeddingGenerator()
     cast(Any, generator)._client = fake_client
 
-    embeddings = generator.embed_images(filepaths=["/data/a.jpg", "/data/b.jpg"])
+    result = generator.embed_images(filepaths=["/data/a.jpg", "/data/b.jpg"])
 
-    assert embeddings.shape == (2, EMBEDDING_DIMENSION)
+    assert result.embeddings.shape == (2, EMBEDDING_DIMENSION)
+    assert result.kept_indices == [0, 1]
     call = fake_client.calls[-1]
     assert call["model_name"] == "mobileclip_s0"
     input_tensors = cast(list[Any], call["inputs"])

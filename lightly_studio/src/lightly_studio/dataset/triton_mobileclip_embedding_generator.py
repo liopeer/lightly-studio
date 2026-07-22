@@ -15,6 +15,7 @@ from lightly_studio.dataset import env
 from lightly_studio.models.embedding_model import EmbeddingModelCreate
 
 from .embedding_generator import ImageCrop, ImageEmbeddingGenerator
+from .image_embedding import ImageEmbeddingResult
 
 DEFAULT_MODEL_NAME = "mobileclip_s0"
 SUPPORTED_MODEL_NAMES = {DEFAULT_MODEL_NAME}
@@ -91,7 +92,9 @@ class TritonMobileCLIPEmbeddingGenerator(ImageEmbeddingGenerator):
         result: list[float] = embeddings[0].tolist()
         return result
 
-    def embed_images(self, filepaths: list[str], show_progress: bool = True) -> NDArray[np.float32]:
+    def embed_images(
+        self, filepaths: list[str], show_progress: bool = True
+    ) -> ImageEmbeddingResult:
         """Embed image paths with Triton MobileCLIP.
 
         Args:
@@ -99,17 +102,24 @@ class TritonMobileCLIPEmbeddingGenerator(ImageEmbeddingGenerator):
             show_progress: Whether to show a progress bar during embedding.
 
         Returns:
-            A numpy array representing the generated embeddings in the same order
-            as the input file paths.
+            An ``ImageEmbeddingResult`` with embeddings in the same order as the
+            input file paths.
         """
         _ = show_progress
         if not filepaths:
-            return np.empty((0, EMBEDDING_DIMENSION), dtype=np.float32)
+            return ImageEmbeddingResult(
+                embeddings=np.empty((0, EMBEDDING_DIMENSION), dtype=np.float32),
+                kept_indices=[],
+            )
 
         inputs = [
             _bytes_input(name=_IMAGE_PATH_INPUT, values=filepaths),
         ]
-        return self._infer_embeddings(inputs=inputs, expected_count=len(filepaths))
+        embeddings = self._infer_embeddings(inputs=inputs, expected_count=len(filepaths))
+        return ImageEmbeddingResult(
+            embeddings=embeddings,
+            kept_indices=list(range(len(filepaths))),
+        )
 
     def embed_pil_images(
         self, images: list[Image.Image], show_progress: bool = True
