@@ -12,7 +12,6 @@ from PIL import Image
 from sqlmodel import Session
 from tqdm import tqdm
 
-from lightly_studio.core.file_outcome_report import AllInputFilesFailedError
 from lightly_studio.dataset import env
 from lightly_studio.dataset.embedding_generator import (
     EmbeddingGenerator,
@@ -42,10 +41,6 @@ EMBEDDING_INSERTION_BATCH_SIZE = 1024
 # Number of annotation crops processed per chunk in embed_annotations.
 ANNOTATION_EMBED_BATCH_SIZE = 2048
 
-# Number of images sent per generator call in embed_images. Keeps individual
-# requests to the embedding backend (e.g. Triton) at a bounded size instead of
-# submitting an entire dataset in one call.
-IMAGE_EMBED_BATCH_SIZE = 512
 # Mapping of sample types to the generator type used for embedding generation.
 _GENERATOR_SAMPLE_TYPE: dict[SampleType, SampleType] = {
     SampleType.IMAGE: SampleType.IMAGE,
@@ -244,40 +239,15 @@ class EmbeddingManager:
         # Extract filepaths in the same order as sample_ids.
         filepaths = [sample_id_to_filepath[sample_id] for sample_id in sample_ids]
 
-        # Generate embeddings in chunks so a single generator call never carries
-        # the entire dataset (e.g. avoids oversized Triton requests).
-        embedding_chunks: list[NDArray[np.float32]] = []
-        kept_sample_ids: list[UUID] = []
-        all_files_failed_error: AllInputFilesFailedError | None = None
-        with tqdm(total=len(filepaths), desc="Generating embeddings", unit=" images") as progress:
-            for start_index in range(0, len(filepaths), IMAGE_EMBED_BATCH_SIZE):
-                filepath_chunk = filepaths[start_index : start_index + IMAGE_EMBED_BATCH_SIZE]
-                try:
-                    result = model.embed_images(filepaths=filepath_chunk, show_progress=False)
-                except AllInputFilesFailedError as error:
-                    all_files_failed_error = error
-                    progress.update(len(filepath_chunk))
-                    continue
-                embedding_chunks.append(result.embeddings)
-                kept_sample_ids.extend(
-                    sample_ids[start_index + index] for index in result.kept_indices
-                )
-                progress.update(len(filepath_chunk))
-
-        if not embedding_chunks and all_files_failed_error is not None:
-            raise all_files_failed_error
-
-        embeddings = (
-            np.concatenate(embedding_chunks, axis=0)
-            if embedding_chunks
-            else np.empty((0, 0), dtype=np.float32)
-        )
+        # Generate embeddings for the samples.
+        result = model.embed_images(filepaths=filepaths)
+        kept_sample_ids = [sample_ids[index] for index in result.kept_indices]
 
         _store_embeddings(
             session=session,
             model_id=model_id,
             sample_ids=kept_sample_ids,
-            embeddings=embeddings,
+            embeddings=result.embeddings,
         )
 
     def embed_annotations(

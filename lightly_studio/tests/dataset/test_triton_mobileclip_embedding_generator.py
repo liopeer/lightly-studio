@@ -95,7 +95,7 @@ def test_embed_images__splits_requests_and_preserves_order(
 
     assert result.embeddings.shape == (len(filepaths), EMBEDDING_DIMENSION)
     assert result.kept_indices == list(range(len(filepaths)))
-    assert [call["inputs"][0]._get_tensor().shape for call in client.calls] == [[64], [1]]
+    assert [call["inputs"][0]._get_tensor().shape for call in client.calls] == [[512], [1]]
 
 
 def test_embed_text__sends_text(

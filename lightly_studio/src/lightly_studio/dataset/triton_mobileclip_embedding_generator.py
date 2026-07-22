@@ -16,7 +16,8 @@ from lightly_studio.models.embedding_model import EmbeddingModelCreate
 from .embedding_generator import ImageCrop, ImageEmbeddingGenerator
 from .image_embedding import ImageEmbeddingResult
 
-DEFAULT_REQUEST_BATCH_SIZE = 64
+# Maximum number of inputs sent in one Triton inference request.
+DEFAULT_REQUEST_BATCH_SIZE = 512
 _MIN_EMBEDDING_OUTPUT_RANK = 2
 _IMAGE_PATH_INPUT = "IMAGE_PATH"
 _TEXT_INPUT = "TEXT"
