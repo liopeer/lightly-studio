@@ -628,7 +628,13 @@ def _load_torch_embedding_generator(model_name: str) -> EmbeddingGenerator:
 def _load_video_embedding_generator() -> VideoEmbeddingGenerator | None:
     if env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_TYPE != "torch":
         return None
-    generator = _load_torch_embedding_generator(model_name=env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_NAME)
+    try:
+        generator = _load_torch_embedding_generator(
+            model_name=env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_NAME
+        )
+    except ImportError:
+        logger.warning("Embedding functionality is disabled.")
+        return None
     if isinstance(generator, VideoEmbeddingGenerator):
         return generator
     return None

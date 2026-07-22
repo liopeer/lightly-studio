@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -11,7 +12,7 @@ from PIL import Image
 from pytest_mock import MockerFixture
 from sqlmodel import Session, select
 
-from lightly_studio.dataset import embedding_manager
+from lightly_studio.dataset import embedding_manager, env
 from lightly_studio.dataset.embedding_generator import (
     ImageCrop,
     ImageEmbeddingGenerator,
@@ -84,6 +85,23 @@ def test_load_torch_embedding_generator__perception_encoder_variants(
 
     assert generator is expected_generator
     create_generator.assert_called_once_with(model_name=model_name)
+
+
+def test_load_video_embedding_generator__import_error_logs_warning(
+    mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+) -> None:
+    mocker.patch.object(env, "LIGHTLY_STUDIO_EMBEDDINGS_MODEL_TYPE", "torch")
+    mocker.patch.object(
+        embedding_manager,
+        "_load_torch_embedding_generator",
+        side_effect=ImportError(),
+    )
+
+    with caplog.at_level(logging.WARNING, logger=embedding_manager.__name__):
+        generator = embedding_manager._load_video_embedding_generator()
+
+    assert generator is None
+    assert "Embedding functionality is disabled." in caplog.text
 
 
 def test_register_embedding_model(
