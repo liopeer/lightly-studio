@@ -7,6 +7,8 @@ import numpy as np
 import pytest
 from numpy.typing import NDArray
 
+pytest.importorskip("tritonclient.grpc")
+
 from lightly_studio.dataset.embedding_generator import ImageCrop
 from lightly_studio.dataset.triton_mobileclip_embedding_generator import (
     DEFAULT_REQUEST_BATCH_SIZE,
