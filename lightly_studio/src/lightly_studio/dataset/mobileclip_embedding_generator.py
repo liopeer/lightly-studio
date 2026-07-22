@@ -20,6 +20,9 @@ from .image_embedding import EmbeddingContext, ImageEmbeddingResult
 
 DEFAULT_MODEL_NAME = "mobileclip_s0"
 SUPPORTED_MODEL_NAMES = {"mobileclip_s0", "mobileclip_s1", "mobileclip_s2", "mobileclip_b"}
+MOBILECLIP_DOWNLOAD_URL = (
+    "https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/{model_name}.pt"
+)
 MAX_BATCH_SIZE: int = 128
 EMBEDDING_DIMENSION: int = 512
 
@@ -158,10 +161,7 @@ class MobileCLIPEmbeddingGenerator(ImageEmbeddingGenerator):
 def _get_cached_mobileclip_checkpoint(model_name: str) -> Path:
     file_path = LIGHTLY_STUDIO_MODEL_CACHE_DIR / f"{model_name}.pt"
     file_utils.download_file_if_does_not_exist(
-        url=(
-            "https://docs-assets.developer.apple.com/ml-research/datasets/mobileclip/"
-            f"{model_name}.pt"
-        ),
+        url=MOBILECLIP_DOWNLOAD_URL.format(model_name=model_name),
         local_filename=file_path,
     )
     return file_path

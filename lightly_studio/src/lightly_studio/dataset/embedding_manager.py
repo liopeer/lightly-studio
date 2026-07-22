@@ -627,7 +627,9 @@ def _load_torch_embedding_generator(model_name: str) -> EmbeddingGenerator:
 
 def _load_video_embedding_generator() -> VideoEmbeddingGenerator | None:
     if env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_TYPE != "torch":
-        return None
+        raise ValueError(
+            "Video embedding generation is only supported for torch embedding models."
+        )
     try:
         generator = _load_torch_embedding_generator(
             model_name=env.LIGHTLY_STUDIO_EMBEDDINGS_MODEL_NAME
