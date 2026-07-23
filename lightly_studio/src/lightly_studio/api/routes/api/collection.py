@@ -16,6 +16,7 @@ from lightly_studio.api.routes.api.status import (
 from lightly_studio.api.routes.api.validators import Paginated
 from lightly_studio.database.db_manager import SessionDep
 from lightly_studio.dataset import embedding_utils
+from lightly_studio.dataset.embedding_manager import EmbeddingManagerProvider
 from lightly_studio.models.collection import (
     CollectionCreate,
     CollectionOverviewView,
@@ -23,7 +24,8 @@ from lightly_studio.models.collection import (
     CollectionView,
     CollectionViewWithCount,
 )
-from lightly_studio.resolvers import collection_resolver, dataset_resolver
+from lightly_studio.models.embedding_model import EmbeddingModelView
+from lightly_studio.resolvers import collection_resolver, dataset_resolver, embedding_model_resolver
 
 collection_router = APIRouter()
 
@@ -141,6 +143,41 @@ def has_embeddings(
     return embedding_utils.collection_has_embeddings(
         session=session, collection_id=collection.collection_id
     )
+
+
+@collection_router.get(
+    "/collections/{collection_id}/embedding_models",
+    response_model=list[EmbeddingModelView],
+)
+def read_embedding_models(
+    session: SessionDep,
+    collection: Annotated[
+        CollectionTable,
+        Path(title="collection Id"),
+        Depends(get_and_validate_collection_id),
+    ],
+) -> list[EmbeddingModelView]:
+    """List stored embedding models and their collection coverage."""
+    active_model_id = EmbeddingManagerProvider.get_embedding_manager().get_loaded_default_model_id(
+        collection.collection_id
+    )
+    sample_count, embedding_counts = embedding_model_resolver.get_embedding_counts_by_collection_id(
+        session=session,
+        collection_id=collection.collection_id,
+    )
+    models = embedding_model_resolver.get_all_by_collection_id(
+        session=session,
+        collection_id=collection.collection_id,
+    )
+    return [
+        EmbeddingModelView(
+            **model.model_dump(),
+            embedding_count=embedding_counts.get(model.embedding_model_id, 0),
+            sample_count=sample_count,
+            is_active=model.embedding_model_id == active_model_id,
+        )
+        for model in models
+    ]
 
 
 class DeepCopyRequest(BaseModel):

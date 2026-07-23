@@ -505,6 +505,10 @@ class EmbeddingManager:
             raise ValueError(f"No embedding model found with ID {embedding_model_id}")
         return embedding_model_id
 
+    def get_loaded_default_model_id(self, collection_id: UUID) -> UUID | None:
+        """Return the runtime-loaded default model without loading or registering one."""
+        return self._collection_id_to_default_model_id.get(collection_id)
+
     def _get_image_model(self, model_id: UUID) -> ImageEmbeddingGenerator:
         """Return the registered image-compatible generator for model_id.
 

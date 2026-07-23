@@ -24,16 +24,26 @@ def get_sample_ids_in_region(
     region: EmbeddingRegion,
 ) -> list[UUID]:
     """Return the sample ids whose cached 2D coordinates fall inside ``region``."""
-    # Resolve against the same deterministic default model as embeddings2d.get_2d_embeddings,
-    # so the region is tested against the exact projection the user lassoed over.
-    # TODO(Kondrat, 07/2026): Select the embedding model via API parameter once supported,
-    # matching embeddings2d.get_2d_embeddings.
-    embedding_model = embedding_model_resolver.get_default_by_collection_id(
-        session=session,
-        collection_id=collection_id,
+    embedding_model = (
+        embedding_model_resolver.get_by_id(
+            session=session, embedding_model_id=region.embedding_model_id
+        )
+        if region.embedding_model_id is not None
+        else embedding_model_resolver.get_latest_complete_by_collection_id(
+            session=session,
+            collection_id=collection_id,
+        )
     )
+    if embedding_model is not None and embedding_model.collection_id != collection_id:
+        raise ValueError("Embedding model does not belong to this collection.")
     if embedding_model is None:
         return []
+    if not embedding_model_resolver.is_complete_for_collection(
+        session=session,
+        collection_id=collection_id,
+        embedding_model_id=embedding_model.embedding_model_id,
+    ):
+        raise ValueError("Selected embedding model does not cover the complete collection.")
 
     x_array, y_array, sample_ids = twodim_embedding_resolver.get_twodim_embeddings(
         session=session,

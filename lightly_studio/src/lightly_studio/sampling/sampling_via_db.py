@@ -285,19 +285,50 @@ def _get_embeddings_by_sample_ids(
     session: Session,
     context: _SamplingContext,
     embedding_model_name: str | None,
+    embedding_model_id: UUID | None,
 ) -> list[Embedding]:
     """Resolve sample embeddings for the given model and sample ids."""
-    embedding_model_id = embedding_model_resolver.get_by_name(
+    model_id = _resolve_embedding_model_id(
         session=session,
         collection_id=context.collection_id,
         embedding_model_name=embedding_model_name,
-    ).embedding_model_id
+        embedding_model_id=embedding_model_id,
+    )
+    if not embedding_model_resolver.is_complete_for_collection(
+        session=session,
+        collection_id=context.collection_id,
+        embedding_model_id=model_id,
+    ):
+        raise ValueError("Selected embedding model does not cover the complete collection.")
     embedding_tables = sample_embedding_resolver.get_by_sample_ids(
         session=session,
         sample_ids=list(context.input_sample_ids),
-        embedding_model_id=embedding_model_id,
+        embedding_model_id=model_id,
     )
+    if len(embedding_tables) != len(context.input_sample_ids):
+        raise ValueError("Selected embedding model does not cover every sampled candidate.")
     return [embedding.embedding for embedding in embedding_tables]
+
+
+def _resolve_embedding_model_id(
+    session: Session,
+    collection_id: UUID,
+    embedding_model_name: str | None,
+    embedding_model_id: UUID | None,
+) -> UUID:
+    """Resolve a legacy model name or the preferred collection-scoped model ID."""
+    if embedding_model_id is not None:
+        model = embedding_model_resolver.get_by_id(
+            session=session, embedding_model_id=embedding_model_id
+        )
+        if model is None or model.collection_id != collection_id:
+            raise ValueError("Embedding model not found for this collection.")
+        return model.embedding_model_id
+    return embedding_model_resolver.get_by_name(
+        session=session,
+        collection_id=collection_id,
+        embedding_model_name=embedding_model_name,
+    ).embedding_model_id
 
 
 def _get_annotations_for_class_balancing(
@@ -342,6 +373,7 @@ def _add_strategy_to_mundig(
                 session=session,
                 context=context,
                 embedding_model_name=strat.embedding_model_name,
+                embedding_model_id=strat.embedding_model_id,
             ),
             strength=strat.strength,
         )
@@ -351,6 +383,7 @@ def _add_strategy_to_mundig(
                 session=session,
                 context=context,
                 embedding_model_name=strat.embedding_model_name,
+                embedding_model_id=strat.embedding_model_id,
             ),
             strength=strat.strength,
             stopping_condition_minimum_distance=strat.stopping_condition_minimum_distance,
@@ -360,12 +393,14 @@ def _add_strategy_to_mundig(
             session=session,
             context=context,
             embedding_model_name=strat.embedding_model_name,
+            embedding_model_id=strat.embedding_model_id,
         )
-        embedding_model_id = embedding_model_resolver.get_by_name(
+        embedding_model_id = _resolve_embedding_model_id(
             session=session,
             collection_id=context.collection_id,
             embedding_model_name=strat.embedding_model_name,
-        ).embedding_model_id
+            embedding_model_id=strat.embedding_model_id,
+        )
         query_tag = tag_resolver.get_by_name(
             session=session,
             tag_name=strat.query_tag_name,

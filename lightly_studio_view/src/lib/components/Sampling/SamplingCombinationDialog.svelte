@@ -14,6 +14,7 @@
     import { useSamplingCombinationDialog } from './useSamplingCombinationDialog/useSamplingCombinationDialog';
     import { useStrategyOptions } from './useSamplingCombinationDialog/useStrategyOptions.svelte';
     import SampleCountInput from '$lib/components/Sampling/SampleCountInput/SampleCountInput.svelte';
+    import { useEmbeddingModels } from '$lib/hooks/useEmbeddingModels/useEmbeddingModels.svelte';
 
     const collectionId = $derived(page.params.collection_id!);
     const isVideoCollection = $derived(
@@ -34,6 +35,12 @@
     } = useStrategyBuilder();
 
     const strategyOptions = useStrategyOptions(() => collectionId);
+    const embeddingModelsQuery = useEmbeddingModels(() => ({ collectionId }));
+    const embeddingModels = $derived(
+        (embeddingModelsQuery.data ?? []).filter(
+            (model) => model.sample_count > 0 && model.embedding_count === model.sample_count
+        )
+    );
 
     // TODO(Leonardo, 06/2026): Update once there are multiple embedding models - currently only one diversity
     // strategy is supported since all samples share a single embedding space.
@@ -116,6 +123,7 @@
                                         annotationLabels={strategyOptions.annotationLabels}
                                         annotationSourceOptions={strategyOptions.annotationSourceOptions}
                                         metadataFieldNames={strategyOptions.metadataFieldNames}
+                                        {embeddingModels}
                                         isDuplicateDisabled={instance.type === 'diversity' ||
                                             instance.type === 'deduplication'}
                                         onRemove={() => removeStrategy(instance.id)}

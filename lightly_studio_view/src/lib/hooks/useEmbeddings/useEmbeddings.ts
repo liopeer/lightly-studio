@@ -13,12 +13,17 @@ type EmbeddingsColorBy = GetEmbeddings2dRequest['color_by'];
 export function useEmbeddings(
     collectionId: string,
     filters: ImageFilter | VideoFilter | AnnotationsFilter | null,
-    colorBy: EmbeddingsColorBy = null
+    colorBy: EmbeddingsColorBy = null,
+    embeddingModelId: string | null = null
 ) {
     return createQuery(() =>
         get2dEmbeddingsOptions({
             path: { collection_id: collectionId },
-            body: { filters: filters ?? {}, color_by: colorBy }
+            body: {
+                filters: filters ?? {},
+                color_by: colorBy,
+                embedding_model_id: embeddingModelId
+            }
         })
     );
 }

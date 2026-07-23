@@ -1,20 +1,24 @@
 import type { TagView } from '$lib/services/types';
 export interface DiversityParams {
     strength: number;
+    embedding_model_id: string;
 }
 
 export interface DeduplicationParams {
     strength: number;
     stopping_condition_minimum_distance: number;
+    embedding_model_id: string;
 }
 
 export interface TypicalityParams {
     strength: number;
+    embedding_model_id: string;
 }
 
 export interface SimilarityParams {
     query_tag_id: string;
     strength: number;
+    embedding_model_id: string;
 }
 
 export interface MetadataWeightingParams {
@@ -104,10 +108,10 @@ export const STRATEGY_LABELS: Record<StrategyType, string> = Object.fromEntries(
 ) as Record<StrategyType, string>;
 
 export const STRATEGY_DEFAULTS: { [K in StrategyType]: StrategyParamsByType[K] } = {
-    diversity: { strength: 1 },
-    deduplication: { strength: 1, stopping_condition_minimum_distance: 0.1 },
-    typicality: { strength: 1 },
-    similarity: { query_tag_id: '', strength: 1 },
+    diversity: { strength: 1, embedding_model_id: '' },
+    deduplication: { strength: 1, stopping_condition_minimum_distance: 0.1, embedding_model_id: '' },
+    typicality: { strength: 1, embedding_model_id: '' },
+    similarity: { query_tag_id: '', strength: 1, embedding_model_id: '' },
     metadata_weighting: { metadata_key: '', strength: 1 },
     class_balancing: {
         annotation_source_id: '',

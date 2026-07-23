@@ -37,6 +37,7 @@ class GetEmbeddings2DRequest(BaseModel):
         description="Filter parameters identifying matching samples"
     )
     color_by: ColorBy | None = None
+    embedding_model_id: UUID | None = None
 
 
 @embeddings2d_router.post("/collections/{collection_id}/embeddings2d/default")
@@ -54,13 +55,26 @@ def get_2d_embeddings(
         )
     _validate_filter_type(collection=collection, filters=body.filters)
 
-    # TODO(Malte, 09/2025): Support choosing the embedding model via API parameter.
-    embedding_model = embedding_model_resolver.get_default_by_collection_id(
+    embedding_model = (
+        embedding_model_resolver.get_by_id(
+            session=session, embedding_model_id=body.embedding_model_id
+        )
+        if body.embedding_model_id is not None
+        else embedding_model_resolver.get_latest_complete_by_collection_id(
+            session=session,
+            collection_id=collection_id,
+        )
+    )
+    if embedding_model is not None and embedding_model.collection_id != collection_id:
+        raise ValueError("Embedding model does not belong to this collection.")
+    if embedding_model is None:
+        raise ValueError("No complete embedding model configured.")
+    if not embedding_model_resolver.is_complete_for_collection(
         session=session,
         collection_id=collection_id,
-    )
-    if embedding_model is None:
-        raise ValueError("No embedding model configured.")
+        embedding_model_id=embedding_model.embedding_model_id,
+    ):
+        raise ValueError("Selected embedding model does not cover the complete collection.")
 
     x_array, y_array, sample_ids = twodim_embedding_resolver.get_twodim_embeddings(
         session=session,

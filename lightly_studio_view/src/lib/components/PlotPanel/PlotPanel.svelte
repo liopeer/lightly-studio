@@ -37,8 +37,23 @@
     import { useAnnotationLabels } from '$lib/hooks/useAnnotationLabels/useAnnotationLabels';
     import { useSelectedAnnotationsFilter } from '$lib/hooks/useAnnotationsFilter/useAnnotationsFilter';
     import { writable } from 'svelte/store';
+    import Select from '$lib/components/Select/Select.svelte';
+    import { useEmbeddingModels } from '$lib/hooks/useEmbeddingModels/useEmbeddingModels.svelte';
 
     let { collectionId }: { collectionId: string } = $props();
+    const embeddingModelsQuery = useEmbeddingModels(() => ({ collectionId }));
+    let selectedEmbeddingModelId = $state<string | null>(null);
+    const selectableEmbeddingModels = $derived(
+        (embeddingModelsQuery.data ?? []).filter(
+            (model) => model.sample_count > 0 && model.embedding_count === model.sample_count
+        )
+    );
+    $effect(() => {
+        if (selectedEmbeddingModelId !== null || selectableEmbeddingModels.length === 0) return;
+        selectedEmbeddingModelId =
+            selectableEmbeddingModels.find((model) => model.is_active)?.embedding_model_id ??
+            selectableEmbeddingModels[selectableEmbeddingModels.length - 1].embedding_model_id;
+    });
     const { setShowEmbeddingPlot, getRangeSelection, setRangeSelectionForCollection } =
         useGlobalStorage();
     const rangeSelection = getRangeSelection(collectionId);
@@ -123,7 +138,9 @@
         annotationLabels
     });
 
-    const embeddingsData = $derived(useEmbeddings(collectionId, filter, $colorBy));
+    const embeddingsData = $derived(
+        useEmbeddings(collectionId, filter, $colorBy, selectedEmbeddingModelId)
+    );
 
     const {
         data: arrowData,
@@ -221,7 +238,8 @@
         }
     };
     const commitRegion = (polygon: Point[], count: number) => {
-        saveRegion({ polygon });
+        if (selectedEmbeddingModelId === null) return;
+        saveRegion({ polygon, embedding_model_id: selectedEmbeddingModelId });
         setPlotSelectionCount(collectionId, count);
     };
     const clearRegion = () => {
@@ -317,6 +335,12 @@
         viewportState = null;
     };
 
+    const onEmbeddingModelChange = (embeddingModelId: string) => {
+        selectedEmbeddingModelId = embeddingModelId;
+        reset();
+        clearSelection();
+    };
+
     const isReady = true;
 
     type RangeSelection = Rectangle | Point[] | null;
@@ -406,6 +430,18 @@
             ✕
         </Button>
     </div>
+    <Select
+        items={selectableEmbeddingModels.map((model) => ({
+            value: model.embedding_model_id,
+            label: model.name
+        }))}
+        value={selectedEmbeddingModelId ?? undefined}
+        placeholder="No complete embedding model"
+        size="sm"
+        disabled={selectableEmbeddingModels.length === 0}
+        onValueChange={onEmbeddingModelChange}
+        testId="embedding-model-select"
+    />
     <div class="flex min-h-0 flex-1 flex-col space-y-6">
         {#if embeddingsData.isLoading}
             <div class="flex items-center justify-center p-8">

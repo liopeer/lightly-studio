@@ -23,12 +23,14 @@
     import ClassBalancingForm from '../forms/ClassBalancingForm/ClassBalancingForm.svelte';
     import StrengthField from '../forms/StrengthField/StrengthField.svelte';
     import Typography from '$lib/components/Typography/Typography.svelte';
+    import Select from '$lib/components/Select/Select.svelte';
     interface Props {
         instance: StrategyInstance;
         tags: StrategySummaryTag[];
         annotationLabels: string[];
         annotationSourceOptions?: { id: string; name: string }[];
         metadataFieldNames?: string[];
+        embeddingModels?: { embedding_model_id: string; name: string }[];
         isDuplicateDisabled?: boolean;
         onRemove: () => void;
         onDuplicate: () => void;
@@ -41,6 +43,7 @@
         annotationLabels,
         annotationSourceOptions = [],
         metadataFieldNames = [],
+        embeddingModels = [],
         isDuplicateDisabled = false,
         onRemove,
         onDuplicate,
@@ -104,6 +107,21 @@
         <CollapsibleContent forceMount>
             {#if instance.isExpanded}
                 <div class="mt-3 border-t border-border pt-3">
+                    {#if ['diversity', 'deduplication', 'typicality', 'similarity'].includes(instance.type)}
+                        <div class="mb-3 grid gap-2">
+                            <label class="text-sm text-foreground">Embedding model</label>
+                            <Select
+                                items={embeddingModels.map((model) => ({
+                                    value: model.embedding_model_id,
+                                    label: model.name
+                                }))}
+                                value={(instance.params as { embedding_model_id: string }).embedding_model_id}
+                                placeholder="Select embedding model"
+                                size="sm"
+                                onValueChange={(embedding_model_id) => onUpdate({ embedding_model_id })}
+                            />
+                        </div>
+                    {/if}
                     {#if instance.type === 'diversity'}
                         <StrengthField
                             strength={instance.params.strength}

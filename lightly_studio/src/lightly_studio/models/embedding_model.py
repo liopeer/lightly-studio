@@ -22,6 +22,15 @@ class EmbeddingModelCreate(EmbeddingModelBase):
     """Model used for creating an embedding model."""
 
 
+class EmbeddingModelView(EmbeddingModelBase):
+    """Embedding model together with its collection coverage."""
+
+    embedding_model_id: UUID
+    embedding_count: int
+    sample_count: int
+    is_active: bool
+
+
 class EmbeddingModelTable(EmbeddingModelBase, table=True):
     """This class defines the EmbeddingModel model."""
 

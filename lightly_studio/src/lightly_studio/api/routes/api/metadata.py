@@ -92,6 +92,10 @@ class ComputeTypicalityRequest(BaseModel):
         default=None,
         description="Embedding model name (uses default if not specified)",
     )
+    embedding_model_id: UUID | None = Field(
+        default=None,
+        description="Embedding model ID (preferred over the legacy name).",
+    )
     metadata_name: str = Field(
         default="typicality",
         description="Metadata field name (defaults to 'typicality')",
@@ -122,11 +126,7 @@ def compute_typicality_metadata(
     Returns:
         None (204 No Content on success).
     """
-    embedding_model = embedding_model_resolver.get_by_name(
-        session=session,
-        collection_id=collection.collection_id,
-        embedding_model_name=request.embedding_model_name,
-    )
+    embedding_model = _get_embedding_model(session=session, collection=collection, request=request)
 
     compute_typicality.compute_typicality_metadata(
         session=session,
@@ -142,6 +142,10 @@ class ComputeSimilarityRequest(BaseModel):
     embedding_model_name: str | None = Field(
         default=None,
         description="Embedding model name (uses default if not specified)",
+    )
+    embedding_model_id: UUID | None = Field(
+        default=None,
+        description="Embedding model ID (preferred over the legacy name).",
     )
     metadata_name: str | None = Field(
         default=None,
@@ -178,10 +182,8 @@ def compute_similarity_metadata(
         HTTPException: 404 if invalid embedding model or query tag is given.
     """
     try:
-        embedding_model = embedding_model_resolver.get_by_name(
-            session=session,
-            collection_id=collection.collection_id,
-            embedding_model_name=request.embedding_model_name,
+        embedding_model = _get_embedding_model(
+            session=session, collection=collection, request=request
         )
     except ValueError as e:
         raise HTTPException(
@@ -202,3 +204,29 @@ def compute_similarity_metadata(
             status_code=HTTP_STATUS_NOT_FOUND,
             detail=f"Query tag {query_tag_id} not found",
         ) from e
+
+
+def _get_embedding_model(
+    session: SessionDep,
+    collection: CollectionTable,
+    request: ComputeTypicalityRequest | ComputeSimilarityRequest,
+):
+    """Resolve a collection embedding model from an ID or legacy name."""
+    if request.embedding_model_id is not None:
+        model = embedding_model_resolver.get_by_id(
+            session=session, embedding_model_id=request.embedding_model_id
+        )
+        if model is None or model.collection_id != collection.collection_id:
+            raise ValueError("Embedding model not found")
+        if not embedding_model_resolver.is_complete_for_collection(
+            session=session,
+            collection_id=collection.collection_id,
+            embedding_model_id=model.embedding_model_id,
+        ):
+            raise ValueError("Embedding model does not cover the complete collection.")
+        return model
+    return embedding_model_resolver.get_by_name(
+        session=session,
+        collection_id=collection.collection_id,
+        embedding_model_name=request.embedding_model_name,
+    )

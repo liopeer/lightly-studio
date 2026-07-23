@@ -13,6 +13,7 @@ export function toApiStrategy(instance: StrategyInstance): SamplingRequest['stra
         return {
             strategy_name: 'diversity',
             embedding_model_name: null,
+            embedding_model_id: instance.params.embedding_model_id,
             strength: instance.params.strength
         };
     }
@@ -21,6 +22,7 @@ export function toApiStrategy(instance: StrategyInstance): SamplingRequest['stra
         return {
             strategy_name: 'deduplication',
             embedding_model_name: null,
+            embedding_model_id: instance.params.embedding_model_id,
             strength: instance.params.strength,
             stopping_condition_minimum_distance: instance.params.stopping_condition_minimum_distance
         };

@@ -34,6 +34,7 @@ export async function computeStrategyMetadata(
             path: { collection_id: collectionId },
             body: {
                 embedding_model_name: null,
+                embedding_model_id: instance.params.embedding_model_id,
                 metadata_name: getMetadataKey(instance)
             }
         });
@@ -53,6 +54,7 @@ export async function computeStrategyMetadata(
             },
             body: {
                 embedding_model_name: null,
+                embedding_model_id: instance.params.embedding_model_id,
                 metadata_name: getMetadataKey(instance)
             }
         });
