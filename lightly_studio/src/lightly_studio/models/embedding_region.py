@@ -8,6 +8,8 @@ constant-size regardless of how many points are selected.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel, Field
 
 # A polygon needs at least three vertices to enclose any area.
@@ -35,4 +37,8 @@ class EmbeddingRegion(BaseModel):
     polygon: list[Point2D] = Field(
         min_length=_MIN_POLYGON_VERTICES,
         description="Ordered polygon vertices in embedding-plot data space (>= 3 vertices).",
+    )
+    embedding_model_id: UUID | None = Field(
+        default=None,
+        description="Model used to produce the coordinates. Required by new clients.",
     )

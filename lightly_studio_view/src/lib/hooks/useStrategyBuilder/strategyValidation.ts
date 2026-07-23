@@ -13,6 +13,16 @@ export function isStrategyInstanceValid(instance: StrategyInstance): boolean {
         return false;
     }
 
+    if (
+        (instance.type === 'diversity' ||
+            instance.type === 'deduplication' ||
+            instance.type === 'typicality' ||
+            instance.type === 'similarity') &&
+        instance.params.embedding_model_id.trim().length === 0
+    ) {
+        return false;
+    }
+
     if (instance.type === 'deduplication') {
         return isPositiveNumber(instance.params.stopping_condition_minimum_distance);
     }

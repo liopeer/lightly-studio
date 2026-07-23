@@ -90,6 +90,27 @@ def test_get_embeddings2d__2d(
     assert set(sample_ids) == set(expected_sample_ids)
 
 
+def test_read_embedding_models__reports_coverage(
+    test_client: TestClient,
+    db_session: Session,
+) -> None:
+    collection_id = fill_db_with_samples_and_embeddings(
+        session=db_session,
+        n_samples=3,
+        embedding_model_names=["model_a", "model_b"],
+        embedding_dimension=EMBEDDING_DIMENSION,
+    )
+
+    response = test_client.get(f"/api/collections/{collection_id}/embedding_models")
+
+    assert response.status_code == 200
+    models = response.json()
+    assert len(models) == 2
+    assert {model["name"] for model in models} == {"model_a", "model_b"}
+    assert all(model["sample_count"] == 3 for model in models)
+    assert all(model["embedding_count"] == 3 for model in models)
+
+
 def test_get_embeddings2d__2d__with_tag_filter(
     test_client: TestClient,
     db_session: Session,

@@ -9,17 +9,32 @@
     import ClassifierSamplesGrid from './ClassifierSamplesGrid.svelte';
     import { Network as NetworkIcon } from '@lucide/svelte';
     import { handleCreateClassifierClose } from './classifierDialogHelpers';
+    import { useEmbeddingModels } from '$lib/hooks/useEmbeddingModels/useEmbeddingModels.svelte';
+    import Select from '$lib/components/Select/Select.svelte';
 
     const { isCreateClassifiersPanelOpen } = useCreateClassifiersPanel();
     const { createClassifier } = useClassifiers();
 
     let classifierName = $state('');
     let collectionId = page.params.collection_id;
+    const embeddingModelsQuery = useEmbeddingModels(() => ({ collectionId }));
+    const embeddingModels = $derived(
+        (embeddingModelsQuery.data ?? []).filter(
+            (model) => model.sample_count > 0 && model.embedding_count === model.sample_count
+        )
+    );
+    let embeddingModelId = $state('');
+    $effect(() => {
+        if (embeddingModelId || embeddingModels.length === 0) return;
+        embeddingModelId =
+            embeddingModels.find((model) => model.is_active)?.embedding_model_id ??
+            embeddingModels[embeddingModels.length - 1].embedding_model_id;
+    });
     let isSubmitting = $state(false);
     let submitError = $state<string | null>(null);
 
     // Form validation
-    const isFormValid = $derived(classifierName.trim().length > 0);
+    const isFormValid = $derived(classifierName.trim().length > 0 && embeddingModelId.length > 0);
 
     function handleClose() {
         classifierName = '';
@@ -38,7 +53,8 @@
             await createClassifier({
                 name: classifierName,
                 class_list: ['positive', 'negative'],
-                collection_id: collectionId
+                collection_id: collectionId,
+                embedding_model_id: embeddingModelId
             });
             classifierName = '';
         } catch (err) {
@@ -92,6 +108,19 @@
                         placeholder="Enter classifier name"
                         required
                         data-testid="classifier-name-input"
+                    />
+                </div>
+                <div class="flex items-center gap-4">
+                    <Label class="whitespace-nowrap text-left text-foreground">Embedding Model</Label>
+                    <Select
+                        items={embeddingModels.map((model) => ({
+                            value: model.embedding_model_id,
+                            label: model.name
+                        }))}
+                        value={embeddingModelId}
+                        placeholder="Select embedding model"
+                        class="flex-1"
+                        onValueChange={(value) => (embeddingModelId = value)}
                     />
                 </div>
             </div>

@@ -110,6 +110,7 @@ class ClassifierManager:
         name: str,
         class_list: list[str],
         collection_id: UUID,
+        embedding_model_id: UUID | None = None,
     ) -> ClassifierEntry:
         """Create a new classifier.
 
@@ -118,21 +119,29 @@ class ClassifierManager:
             name: The name of the classifier.
             class_list: List of classes to be used for training.
             collection_id: The collection_id to which the samples belong.
+            embedding_model_id: Optional model used for classifier training.
 
         Returns:
             The created classifier name and ID.
         """
-        embedding_models = embedding_model_resolver.get_all_by_collection_id(
-            session=session,
-            collection_id=collection_id,
-        )
-        if len(embedding_models) == 0:
-            raise ValueError("No embedding model found for the given collection ID.")
-        # TODO(Horatiu, 05/2025): Handle multiple models correctly when
-        # available
-        if len(embedding_models) > 1:
-            raise ValueError("Multiple embedding models found for the given collection ID.")
-        embedding_model = embedding_models[0]
+        if embedding_model_id is not None:
+            embedding_model = embedding_model_resolver.get_by_id(
+                session=session, embedding_model_id=embedding_model_id
+            )
+            if embedding_model is None or embedding_model.collection_id != collection_id:
+                raise ValueError("Embedding model not found for the given collection ID.")
+            if not embedding_model_resolver.is_complete_for_collection(
+                session=session,
+                collection_id=collection_id,
+                embedding_model_id=embedding_model.embedding_model_id,
+            ):
+                raise ValueError("Embedding model does not cover the complete collection.")
+        else:
+            embedding_model = embedding_model_resolver.get_latest_complete_by_collection_id(
+                session=session, collection_id=collection_id
+            )
+            if embedding_model is None:
+                raise ValueError("No complete embedding model found for the given collection ID.")
         classifier = RandomForest(
             name=name,
             classes=class_list,

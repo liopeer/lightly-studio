@@ -159,7 +159,8 @@ export function useClassifiers(): UseClassifiersReturn {
                 body: {
                     name: request.name,
                     class_list: request.class_list,
-                    collection_id: request.collection_id.toString()
+                    collection_id: request.collection_id.toString(),
+                    embedding_model_id: request.embedding_model_id
                 }
             });
 

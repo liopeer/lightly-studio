@@ -32,6 +32,7 @@ class EmbeddingDiversityStrategy(SamplingStrategy):
 
     strategy_name: Literal["diversity"] = "diversity"
     embedding_model_name: str | None = None
+    embedding_model_id: UUID | None = None
 
 
 class EmbeddingDeduplicationStrategy(SamplingStrategy):
@@ -44,6 +45,7 @@ class EmbeddingDeduplicationStrategy(SamplingStrategy):
 
     strategy_name: Literal["deduplication"] = "deduplication"
     embedding_model_name: str | None = None
+    embedding_model_id: UUID | None = None
     stopping_condition_minimum_distance: float = Field(ge=0)
 
 
@@ -53,6 +55,7 @@ class EmbeddingSimilarityStrategy(SamplingStrategy):
     strategy_name: Literal["similarity"] = "similarity"
     query_tag_name: str
     embedding_model_name: str | None = None
+    embedding_model_id: UUID | None = None
 
 
 class MetadataWeightingStrategy(SamplingStrategy):

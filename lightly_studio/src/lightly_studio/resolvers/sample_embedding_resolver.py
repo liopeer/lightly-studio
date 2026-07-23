@@ -195,6 +195,8 @@ def get_hash_by_collection_id(
 
     sample_ids: list[UUID] = []
     hasher = hashlib.sha256()
+    hasher.update(str(collection_id).encode("utf-8"))
+    hasher.update(str(embedding_model_id).encode("utf-8"))
 
     for row in rows:
         sample_ids.append(row.sample_id)  # type: ignore[attr-defined]

@@ -6,11 +6,11 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import ColumnElement
-from sqlmodel import Session, col, select
+from sqlmodel import Session, col
 
 from lightly_studio.database import db_vector
-from lightly_studio.models.embedding_model import EmbeddingModelTable
 from lightly_studio.models.sample_embedding import SampleEmbeddingTable
+from lightly_studio.resolvers import embedding_model_resolver
 from lightly_studio.type_definitions import QueryType
 
 
@@ -27,20 +27,34 @@ def get_distance_expression(
     if not text_embedding:
         return None, None
 
-    embedding_model_id = session.exec(
-        select(EmbeddingModelTable.embedding_model_id)
-        .where(EmbeddingModelTable.collection_id == collection_id)
-        .limit(1)
-    ).first()
+    from lightly_studio.dataset.embedding_manager import (  # noqa: PLC0415
+        EmbeddingManagerProvider,
+    )
 
-    if not embedding_model_id:
+    active_model_id = EmbeddingManagerProvider.get_embedding_manager().get_loaded_default_model_id(
+        collection_id
+    )
+    embedding_model = (
+        embedding_model_resolver.get_by_id(session=session, embedding_model_id=active_model_id)
+        if active_model_id is not None
+        else None
+    )
+    if embedding_model is None or not embedding_model_resolver.is_complete_for_collection(
+        session=session,
+        collection_id=collection_id,
+        embedding_model_id=embedding_model.embedding_model_id,
+    ):
+        embedding_model = embedding_model_resolver.get_latest_complete_by_collection_id(
+            session=session, collection_id=collection_id
+        )
+    if embedding_model is None:
         return None, None
 
     distance_expr = db_vector.cosine_distance(
         SampleEmbeddingTable.embedding,
         text_embedding,
     )
-    return embedding_model_id, distance_expr
+    return embedding_model.embedding_model_id, distance_expr
 
 
 def distance_to_similarity(distance: float) -> float:

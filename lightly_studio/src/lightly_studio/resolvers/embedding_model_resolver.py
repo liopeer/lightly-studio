@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlmodel import Session, col, select
 
 from lightly_studio.models.embedding_model import (
     EmbeddingModelCreate,
     EmbeddingModelTable,
 )
+from lightly_studio.models.sample import SampleTable
+from lightly_studio.models.sample_embedding import SampleEmbeddingTable
 
 
 def create(session: Session, embedding_model: EmbeddingModelCreate) -> EmbeddingModelTable:
@@ -73,6 +76,72 @@ def get_default_by_collection_id(
         )
         .limit(1)
     ).first()
+
+
+def get_latest_complete_by_collection_id(
+    session: Session, collection_id: UUID
+) -> EmbeddingModelTable | None:
+    """Return the newest model that embeds every sample in the collection."""
+    sample_count = session.exec(
+        select(func.count(col(SampleTable.sample_id))).where(
+            SampleTable.collection_id == collection_id
+        )
+    ).one()
+    if sample_count == 0:
+        return None
+
+    embedding_count = func.count(col(SampleEmbeddingTable.sample_id))
+    return session.exec(
+        select(EmbeddingModelTable)
+        .outerjoin(
+            SampleEmbeddingTable,
+            EmbeddingModelTable.embedding_model_id
+            == SampleEmbeddingTable.embedding_model_id,
+        )
+        .where(EmbeddingModelTable.collection_id == collection_id)
+        .group_by(*EmbeddingModelTable.__table__.columns)
+        .having(embedding_count == sample_count)
+        .order_by(
+            col(EmbeddingModelTable.created_at).desc(),
+            col(EmbeddingModelTable.embedding_model_id).desc(),
+        )
+        .limit(1)
+    ).first()
+
+
+def get_embedding_counts_by_collection_id(
+    session: Session, collection_id: UUID
+) -> tuple[int, dict[UUID, int]]:
+    """Return the collection sample count and vector count for each model."""
+    sample_count = session.exec(
+        select(func.count(col(SampleTable.sample_id))).where(
+            SampleTable.collection_id == collection_id
+        )
+    ).one()
+    rows = session.exec(
+        select(
+            EmbeddingModelTable.embedding_model_id,
+            func.count(col(SampleEmbeddingTable.sample_id)),
+        )
+        .outerjoin(
+            SampleEmbeddingTable,
+            EmbeddingModelTable.embedding_model_id
+            == SampleEmbeddingTable.embedding_model_id,
+        )
+        .where(EmbeddingModelTable.collection_id == collection_id)
+        .group_by(EmbeddingModelTable.embedding_model_id)
+    ).all()
+    return sample_count, dict(rows)
+
+
+def is_complete_for_collection(
+    session: Session, collection_id: UUID, embedding_model_id: UUID
+) -> bool:
+    """Return whether a model has a vector for every sample in its collection."""
+    sample_count, embedding_counts = get_embedding_counts_by_collection_id(
+        session=session, collection_id=collection_id
+    )
+    return sample_count > 0 and embedding_counts.get(embedding_model_id, 0) == sample_count
 
 
 def get_by_id(session: Session, embedding_model_id: UUID) -> EmbeddingModelTable | None:

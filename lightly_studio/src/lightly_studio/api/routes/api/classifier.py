@@ -311,6 +311,7 @@ class CreateClassifierRequest(BaseModel):
     name: str
     class_list: list[str]
     collection_id: UUID
+    embedding_model_id: UUID | None = None
 
 
 class CreateClassifierResponse(BaseModel):
@@ -335,12 +336,21 @@ def create_classifier(
 
     """
     classifier_manager = ClassifierManagerProvider.get_classifier_manager()
-    classifier = classifier_manager.create_classifier(
-        session=session,
-        name=request.name,
-        class_list=request.class_list,
-        collection_id=request.collection_id,
-    )
+    if request.embedding_model_id is not None:
+        classifier = classifier_manager.create_classifier(
+            session=session,
+            name=request.name,
+            class_list=request.class_list,
+            collection_id=request.collection_id,
+            embedding_model_id=request.embedding_model_id,
+        )
+    else:
+        classifier = classifier_manager.create_classifier(
+            session=session,
+            name=request.name,
+            class_list=request.class_list,
+            collection_id=request.collection_id,
+        )
     return CreateClassifierResponse(
         name=classifier.few_shot_classifier.name,
         classifier_id=str(classifier.classifier_id),
